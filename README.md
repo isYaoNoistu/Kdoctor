@@ -10,6 +10,8 @@
 - 支持增强输入模式：附加 `profile`、`compose`、日志目录后，可补充配置校验、KRaft 对照、宿主机、容器、日志指纹检查。
 - 默认输出中文终端报告，也支持 `json` 和 `markdown`。
 - 面向“现场可用性”和“误报控制”，缺少上下文时优先 `SKIP` 或降级，而不是机械报错。
+- `probe` 会优先检查 `_kdoctor_probe` 是否可用；主题不存在时会尝试自动创建，避免 fresh cluster 被误判成链路故障。
+- `probe` 结果已按阶段收口：上游阶段失败时，下游未执行项会标记为 `SKIP`，不会再把一处失败扩散成多条重复 `FAIL`。
 
 ## 当前 V1 能力
 
@@ -118,6 +120,16 @@ go run ./cmd/kdoctor probe --bootstrap 192.168.1.1:9192 --format markdown --outp
 - 默认输出：中文终端报告
 - `--json`：机器可读 JSON
 - `--format markdown`：便于发群、贴工单、留档
+
+`probe` 模式下的结果语义：
+
+- `CLI-001` 对应 `bootstrap -> metadata`
+- `CLI-002` 对应 `produce`
+- `CLI-003` 对应 `consume`
+- `CLI-004` 对应 `commit`
+- `CLI-005` 对应整条端到端链路
+
+如果某个上游阶段已经失败，后续未执行阶段会显示为 `SKIP`，并附带失败阶段说明。
 
 退出码约定：
 

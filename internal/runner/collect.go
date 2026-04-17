@@ -66,6 +66,16 @@ func CollectAndCheck(ctx context.Context, env *config.Runtime) (*snapshot.Bundle
 	bundle.Host = hostcollector.Collector{}.Collect(ctx, env, composeSnap, bundle.Docker)
 	bundle.Logs = logcollector.Collector{}.Collect(ctx, env, composeSnap, bundle.Docker)
 	bundle.Probe = probe.Run(ctx, env)
+	if bundle.Probe != nil && bundle.Probe.ShouldRefreshKafkaSnapshot() {
+		refreshedKafka, refreshedTopic, refreshErr := kafkacollector.Collector{}.Collect(ctx, env, bundle.Network)
+		if refreshErr != nil {
+			errs = append(errs, refreshErr.Error())
+		} else {
+			bundle.Kafka = refreshedKafka
+			bundle.Topic = refreshedTopic
+			bundle.Network = networkcollector.Collector{}.CollectMetadata(ctx, env, bundle.Network, refreshedKafka.Brokers)
+		}
+	}
 
 	checks := runChecks(ctx, env, bundle)
 	return bundle, checks, errs

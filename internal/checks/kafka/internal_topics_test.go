@@ -28,3 +28,33 @@ func TestInternalTopicsCheckerWarnsWhenTransactionTopicMissing(t *testing.T) {
 		t.Fatalf("expected WARN, got %s", result.Status)
 	}
 }
+
+func TestInternalTopicsCheckerWarnsWhenOffsetsTopicMissingBeforeCommit(t *testing.T) {
+	checker := InternalTopicsChecker{}
+	result := checker.Run(context.Background(), &snapshot.Bundle{
+		Topic: &snapshot.TopicSnapshot{},
+		Probe: &snapshot.ProbeSnapshot{
+			FailureStage: snapshot.ProbeStageProduce,
+		},
+	})
+
+	if result.Status != model.StatusWarn {
+		t.Fatalf("expected WARN, got %s", result.Status)
+	}
+}
+
+func TestInternalTopicsCheckerFailsWhenOffsetsTopicMissingAfterCommitExecution(t *testing.T) {
+	checker := InternalTopicsChecker{}
+	result := checker.Run(context.Background(), &snapshot.Bundle{
+		Topic: &snapshot.TopicSnapshot{},
+		Probe: &snapshot.ProbeSnapshot{
+			CommitExecuted: true,
+			CommitOK:       false,
+			FailureStage:   snapshot.ProbeStageCommit,
+		},
+	})
+
+	if result.Status != model.StatusFail {
+		t.Fatalf("expected FAIL, got %s", result.Status)
+	}
+}

@@ -52,7 +52,6 @@ func (RootCause) Diagnose(report *model.Report) {
 	}
 
 	report.Summary.Overview = fmt.Sprintf("本次共执行 %d 项检查，最高状态为 %s。已识别 %d 个优先级较高的主因，请优先按建议动作顺序处理。", len(report.Checks), statusText(report.Summary.Status), limit)
-	appendFallbackCauses(report)
 }
 
 func inferRootCauses(index map[string]model.CheckResult) []correlatedCause {

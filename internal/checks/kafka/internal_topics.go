@@ -24,7 +24,26 @@ func (InternalTopicsChecker) Run(_ context.Context, snap *snapshot.Bundle) model
 	txn, hasTxn := findTopic(snap.Topic, "__transaction_state")
 
 	if !hasOffsets {
-		result := rule.NewFail("KFK-004", "internal_topics_health", "kafka", "__consumer_offsets topic is missing")
+		evidence := []string{}
+		if snap.Probe != nil {
+			evidence = append(evidence,
+				fmt.Sprintf("commit_executed=%t", snap.Probe.CommitExecuted),
+				fmt.Sprintf("commit_ok=%t", snap.Probe.CommitOK),
+			)
+			if snap.Probe.FailureStage != "" {
+				evidence = append(evidence, fmt.Sprintf("failure_stage=%s", snap.Probe.FailureStage))
+			}
+		}
+
+		if snap.Probe != nil && snap.Probe.CommitExecuted {
+			result := rule.NewFail("KFK-004", "internal_topics_health", "kafka", "__consumer_offsets is missing after consumer group commit probe executed")
+			result.Evidence = evidence
+			result.NextActions = []string{"verify cluster metadata integrity", "verify brokers can create and load internal topics", "check controller and broker logs"}
+			return result
+		}
+
+		result := rule.NewWarn("KFK-004", "internal_topics_health", "kafka", "__consumer_offsets is not present yet; cluster may still be fresh or commit path has not run")
+		result.Evidence = evidence
 		result.NextActions = []string{"verify cluster metadata integrity", "verify brokers can create and load internal topics", "check controller and broker logs"}
 		return result
 	}

@@ -23,7 +23,11 @@ func (RegistrationChecker) Run(_ context.Context, snap *snapshot.Bundle) model.C
 	expected := snap.Kafka.ExpectedBrokerCount
 	actual := len(snap.Kafka.Brokers)
 	result := rule.NewPass("KFK-002", "broker_registration", "kafka", "all expected brokers are registered")
-	result.Evidence = []string{fmt.Sprintf("expected=%d actual=%d", expected, actual)}
+	if expected > 0 {
+		result.Evidence = []string{fmt.Sprintf("expected=%d actual=%d", expected, actual)}
+	} else {
+		result.Evidence = []string{fmt.Sprintf("actual=%d", actual)}
+	}
 	if expected > 0 && actual < expected {
 		result = rule.NewFail("KFK-002", "broker_registration", "kafka", "broker registration count is below expectation")
 		result.Evidence = []string{fmt.Sprintf("expected=%d actual=%d", expected, actual)}

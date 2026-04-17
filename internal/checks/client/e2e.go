@@ -28,15 +28,12 @@ func (EndToEndChecker) Run(_ context.Context, snap *snapshot.Bundle) model.Check
 	result.Evidence = []string{
 		fmt.Sprintf("topic=%s", snap.Probe.Topic),
 		fmt.Sprintf("group_id=%s", snap.Probe.GroupID),
+		fmt.Sprintf("executed_stage=%s", snap.Probe.ExecutedStage),
 		fmt.Sprintf("end_to_end_duration_ms=%d", snap.Probe.EndToEndDurationMs),
 	}
 	if !allOK {
 		result = rule.NewFail("CLI-005", "end_to_end_probe", "client", "end-to-end probe failed")
-		result.Evidence = []string{
-			fmt.Sprintf("topic=%s", snap.Probe.Topic),
-			fmt.Sprintf("failure_stage=%s", snap.Probe.FailureStage),
-			fmt.Sprintf("error=%s", snap.Probe.Error),
-		}
+		result.Evidence = mergeEvidence([]string{fmt.Sprintf("topic=%s", snap.Probe.Topic)}, probeEvidence(snap.Probe))
 		result.NextActions = []string{"check the failing stage first", "verify probe topic and broker reachability", "correlate with network, ISR and controller checks"}
 	}
 	return result

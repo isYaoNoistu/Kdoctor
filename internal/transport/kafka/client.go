@@ -53,6 +53,18 @@ type ConsumeResult struct {
 	MessageID  string
 }
 
+func TopicExists(meta *Metadata, topic string) bool {
+	if meta == nil {
+		return false
+	}
+	for _, item := range meta.Topics {
+		if item.Name == topic {
+			return true
+		}
+	}
+	return false
+}
+
 func FetchMetadata(brokers []string, timeout time.Duration) (*Metadata, error) {
 	cfg := newConfig(timeout)
 
@@ -191,6 +203,66 @@ func CommitProbeOffset(brokers []string, timeout time.Duration, groupID string, 
 	return time.Since(startedAt).Milliseconds(), nil
 }
 
+func EnsureProbeTopic(brokers []string, timeout time.Duration, topic string, partitions int32, replicationFactor int16) (bool, error) {
+	if partitions < 1 {
+		partitions = 1
+	}
+	if replicationFactor < 1 {
+		replicationFactor = 1
+	}
+
+	cfg := newConfig(timeout)
+	admin, err := sarama.NewClusterAdmin(brokers, cfg)
+	if err != nil {
+		return false, fmt.Errorf("create cluster admin: %w", err)
+	}
+	defer admin.Close()
+
+	retention := "3600000"
+	cleanupPolicy := "delete"
+	detail := &sarama.TopicDetail{
+		NumPartitions:     partitions,
+		ReplicationFactor: replicationFactor,
+		ConfigEntries: map[string]*string{
+			"retention.ms":   &retention,
+			"cleanup.policy": &cleanupPolicy,
+		},
+	}
+
+	if err := admin.CreateTopic(topic, detail, false); err != nil {
+		if waitErr := waitForTopicState(brokers, timeout, topic, true); waitErr == nil {
+			return false, nil
+		}
+		return false, fmt.Errorf("create probe topic: %w", err)
+	}
+
+	if err := waitForTopicState(brokers, timeout, topic, true); err != nil {
+		return true, err
+	}
+	return true, nil
+}
+
+func DeleteProbeTopic(brokers []string, timeout time.Duration, topic string) error {
+	cfg := newConfig(timeout)
+	admin, err := sarama.NewClusterAdmin(brokers, cfg)
+	if err != nil {
+		return fmt.Errorf("create cluster admin: %w", err)
+	}
+	defer admin.Close()
+
+	if err := admin.DeleteTopic(topic); err != nil {
+		if waitErr := waitForTopicState(brokers, timeout, topic, false); waitErr == nil {
+			return nil
+		}
+		return fmt.Errorf("delete probe topic: %w", err)
+	}
+
+	if err := waitForTopicState(brokers, timeout, topic, false); err != nil {
+		return err
+	}
+	return nil
+}
+
 func BuildProbePayload(messageID, mode string, size int) ([]byte, error) {
 	host, _ := os.Hostname()
 	payload := ProbeMessage{
@@ -236,4 +308,21 @@ func padWithX(count int) string {
 		buf[i] = 'x'
 	}
 	return string(buf)
+}
+
+func waitForTopicState(brokers []string, timeout time.Duration, topic string, shouldExist bool) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		meta, err := FetchMetadata(brokers, timeout)
+		if err == nil && TopicExists(meta, topic) == shouldExist {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			if shouldExist {
+				return fmt.Errorf("probe topic %q was not visible in metadata before timeout", topic)
+			}
+			return fmt.Errorf("probe topic %q still exists after cleanup timeout", topic)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
 }
