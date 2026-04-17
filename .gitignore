@@ -1,0 +1,11 @@
+dist/*
+!dist/.gitkeep
+report.md
+
+*.exe
+*.test
+*.out
+coverage.txt
+
+.DS_Store
+Thumbs.db

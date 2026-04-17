@@ -1,0 +1,80 @@
+version: 1
+
+default_profile: generic-bootstrap
+
+profiles:
+  generic-bootstrap:
+    bootstrap_external: []
+    bootstrap_internal: []
+    controller_endpoints: []
+    broker_count: 0
+    expected_min_isr: 0
+    expected_replication_factor: 0
+    host_network: false
+    plaintext_external: true
+
+  single-host-3broker-kraft-prod:
+    bootstrap_external:
+      - "192.168.1.1:9392"
+      - "192.168.1.1:9394"
+      - "192.168.1.1:9396"
+    bootstrap_internal:
+      - "192.168.1.1:9192"
+      - "192.168.1.1:9194"
+      - "192.168.1.1:9196"
+    controller_endpoints:
+      - "192.168.1.1:9193"
+      - "192.168.1.1:9195"
+      - "192.168.1.1:9197"
+    broker_count: 3
+    expected_min_isr: 2
+    expected_replication_factor: 3
+    host_network: true
+    plaintext_external: true
+
+  single-host-3broker-kraft-uat:
+    bootstrap_external:
+      - "192.168.1.1:9292"
+      - "192.168.1.1:9294"
+      - "192.168.1.1:9296"
+    bootstrap_internal:
+      - "192.168.1.1:9192"
+      - "192.168.1.1:9194"
+      - "192.168.1.1:9196"
+    controller_endpoints:
+      - "192.168.1.1:9193"
+      - "192.168.1.1:9195"
+      - "192.168.1.1:9197"
+    broker_count: 3
+    expected_min_isr: 2
+    expected_replication_factor: 3
+    host_network: true
+    plaintext_external: true
+
+docker:
+  enabled: true
+  compose_file: "./docker-compose.yml"
+  container_names:
+    - "kafka1"
+    - "kafka2"
+    - "kafka3"
+
+logs:
+  enabled: true
+  tail_lines: 300
+  lookback_minutes: 15
+  log_dir: ""
+
+probe:
+  enabled: true
+  topic: "_kdoctor_probe"
+  group_prefix: "kdoctor-probe"
+  timeout: "15s"
+  message_bytes: 1024
+  produce_count: 1
+  cleanup: false
+
+execution:
+  timeout: "30s"
+  metadata_timeout: "5s"
+  tcp_timeout: "3s"
