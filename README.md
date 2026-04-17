@@ -4,6 +4,9 @@
 
 它的目标不是替代 Kafka 管理平台，而是在你手里只有一个 `bootstrap` 地址，或者额外还能拿到 `profile`、`compose`、日志目录、Docker 运行时信息时，尽快判断问题更像是网络、`advertised.listeners`、KRaft、Topic/ISR、客户端链路，还是宿主机、容器和日志层。
 
+详细使用手册见 [USER_GUIDE.md](./USER_GUIDE.md)。
+手册已经区分 `Windows` / `Linux` 两套命令和路径写法，可直接按系统照抄。
+
 ## 作用
 
 - 支持最小输入模式：只给 `bootstrap` 也能执行网络、metadata、topic、probe 检查。

@@ -19,19 +19,20 @@ import (
 )
 
 type Options struct {
-	Mode              string
-	ConfigPath        string
-	ProfileName       string
-	JSONOutput        bool
-	OutputFormat      string
-	OutputPath        string
-	Bootstrap         string
-	BootstrapInternal string
-	BootstrapExternal string
-	ComposePath       string
-	LogDir            string
-	Timeout           string
-	Severity          string
+	Mode               string
+	ConfigPath         string
+	ConfigPathExplicit bool
+	ProfileName        string
+	JSONOutput         bool
+	OutputFormat       string
+	OutputPath         string
+	Bootstrap          string
+	BootstrapInternal  string
+	BootstrapExternal  string
+	ComposePath        string
+	LogDir             string
+	Timeout            string
+	Severity           string
 }
 
 type App struct {
@@ -69,7 +70,8 @@ func (a *App) Run(ctx context.Context) (model.Report, error) {
 	}
 
 	if a.options.OutputPath != "" {
-		if err := os.WriteFile(a.options.OutputPath, payload, 0o644); err != nil {
+		outputPath := config.NormalizeInputPath(a.options.OutputPath)
+		if err := os.WriteFile(outputPath, payload, 0o644); err != nil {
 			return model.Report{}, fmt.Errorf("write report file: %w", err)
 		}
 	}

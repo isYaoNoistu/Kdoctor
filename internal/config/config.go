@@ -59,14 +59,26 @@ type ExecutionConfig struct {
 	TCPTimeout      string `json:"tcp_timeout" yaml:"tcp_timeout"`
 }
 
-func LoadFile(path string) (Config, error) {
-	if strings.TrimSpace(path) == "" {
+func NormalizeInputPath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	return strings.ReplaceAll(path, "\\", string(os.PathSeparator))
+}
+
+func LoadFile(path string, strict bool) (Config, error) {
+	path = NormalizeInputPath(path)
+	if path == "" {
 		return Config{}, nil
 	}
 
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
+			if strict {
+				return Config{}, fmt.Errorf("config file not found: %s", path)
+			}
 			return Config{}, nil
 		}
 		return Config{}, fmt.Errorf("read config file: %w", err)

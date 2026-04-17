@@ -61,6 +61,11 @@ func parseFlags(args []string) (app.Options, error) {
 	if err := fs.Parse(args); err != nil {
 		return app.Options{}, err
 	}
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "config" {
+			opts.ConfigPathExplicit = true
+		}
+	})
 
 	switch mode {
 	case "quick", "full", "probe", "incident", "lint":

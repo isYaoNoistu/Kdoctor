@@ -9,7 +9,7 @@ import (
 )
 
 func Bootstrap(opts Options) (*config.Runtime, error) {
-	fileCfg, err := config.LoadFile(opts.ConfigPath)
+	fileCfg, err := config.LoadFile(opts.ConfigPath, opts.ConfigPathExplicit)
 	if err != nil {
 		return nil, err
 	}
@@ -54,14 +54,14 @@ func Bootstrap(opts Options) (*config.Runtime, error) {
 		return nil, fmt.Errorf("resolve probe timeout: %w", err)
 	}
 
-	composePath := cfg.Docker.ComposeFile
+	composePath := config.NormalizeInputPath(cfg.Docker.ComposeFile)
 	if opts.ComposePath != "" {
-		composePath = opts.ComposePath
+		composePath = config.NormalizeInputPath(opts.ComposePath)
 	}
 
-	logDir := cfg.Logs.LogDir
+	logDir := config.NormalizeInputPath(cfg.Logs.LogDir)
 	if opts.LogDir != "" {
-		logDir = opts.LogDir
+		logDir = config.NormalizeInputPath(opts.LogDir)
 	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))

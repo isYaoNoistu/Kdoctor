@@ -1,6 +1,10 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestMergePreservesDefaultsAndOverrides(t *testing.T) {
 	base := Default()
@@ -37,5 +41,39 @@ func TestDefaultProfileIsGenericBootstrap(t *testing.T) {
 	cfg := Default()
 	if cfg.DefaultProfile != "generic-bootstrap" {
 		t.Fatalf("expected generic-bootstrap default profile, got %q", cfg.DefaultProfile)
+	}
+}
+
+func TestLoadFileReturnsErrorWhenExplicitPathIsMissing(t *testing.T) {
+	_, err := LoadFile("definitely-missing-kdoctor.yaml", true)
+	if err == nil {
+		t.Fatal("expected explicit missing config path to return an error")
+	}
+}
+
+func TestLoadFileIgnoresMissingDefaultPath(t *testing.T) {
+	cfg, err := LoadFile("definitely-missing-kdoctor.yaml", false)
+	if err != nil {
+		t.Fatalf("expected missing default config path to be ignored, got %v", err)
+	}
+	if cfg.Version != 0 {
+		t.Fatalf("expected zero-value config, got version=%d", cfg.Version)
+	}
+}
+
+func TestLoadFileReadsYamlContent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "kdoctor.yaml")
+	content := []byte("version: 1\ndefault_profile: test-profile\n")
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	cfg, err := LoadFile(path, true)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.DefaultProfile != "test-profile" {
+		t.Fatalf("expected default_profile to be loaded, got %q", cfg.DefaultProfile)
 	}
 }
