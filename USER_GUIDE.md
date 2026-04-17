@@ -684,6 +684,26 @@ execution:
 
 - 默认日志目录
 
+`logs.min_lines_per_source`
+
+- 单个日志来源至少需要多少行样本才算“样本充足”
+
+`logs.freshness_window`
+
+- 日志新鲜度窗口，超过这个时间的来源会被标记为“不够新鲜”
+
+`logs.max_files`
+
+- 本次日志采样最多处理多少个文件
+
+`logs.max_bytes_per_source`
+
+- 单个日志来源最多读取多少字节，用于控制现场读取开销
+
+`logs.custom_patterns_dir`
+
+- 自定义日志指纹规则目录，用于补充团队自己的错误模式
+
 `probe.topic`
 
 - 探针主题名
@@ -719,6 +739,22 @@ execution:
 `execution.tcp_timeout`
 
 - TCP 探测超时
+
+`execution.admin_api_timeout`
+
+- Admin API 相关动作的独立超时
+
+`execution.jmx_timeout`
+
+- JMX 相关动作的独立超时
+
+`diagnosis.max_root_causes`
+
+- 报告摘要最多输出多少个主因
+
+`diagnosis.enable_confidence`
+
+- 是否在根因摘要里显示“高置信度”“中高置信度”一类提示
 
 ## 10. 输出怎么理解
 

@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"time"
 
 	clientchecks "kdoctor/internal/checks/client"
 	dockerchecks "kdoctor/internal/checks/docker"
@@ -36,21 +37,31 @@ func CollectAndCheck(ctx context.Context, env *config.Runtime) (*snapshot.Bundle
 	errs := []string{}
 
 	var composeSnap *snapshot.ComposeSnapshot
-	var composeErr error
 	var networkSnap *snapshot.NetworkSnapshot
 
-	parallel(
-		func() {
-			composeSnap, composeErr = composecollector.Collector{}.Collect(ctx, env)
+	errs = append(errs, runTasks(
+		ctx,
+		taskSpec{
+			Name:    "compose_snapshot",
+			Timeout: minDuration(env.MetadataTimeout, 5*time.Second),
+			Soft:    true,
+			Run: func(taskCtx context.Context) error {
+				var err error
+				composeSnap, err = composecollector.Collector{}.Collect(taskCtx, env)
+				return err
+			},
 		},
-		func() {
-			networkSnap = networkcollector.Collector{}.CollectBase(ctx, env)
+		taskSpec{
+			Name:    "network_base",
+			Timeout: minDuration(env.MetadataTimeout, 10*time.Second),
+			Soft:    true,
+			Run: func(taskCtx context.Context) error {
+				networkSnap = networkcollector.Collector{}.CollectBase(taskCtx, env)
+				return nil
+			},
 		},
-	)
+	)...)
 
-	if composeErr != nil {
-		errs = append(errs, composeErr.Error())
-	}
 	bundle.Compose = composeSnap
 	bundle.Network = networkcollector.Collector{}.CollectComposeControllers(ctx, env, networkSnap, composeSnap)
 
@@ -79,6 +90,19 @@ func CollectAndCheck(ctx context.Context, env *config.Runtime) (*snapshot.Bundle
 
 	checks := runChecks(ctx, env, bundle)
 	return bundle, checks, errs
+}
+
+func minDuration(left time.Duration, right time.Duration) time.Duration {
+	if left <= 0 {
+		return right
+	}
+	if right <= 0 {
+		return left
+	}
+	if left < right {
+		return left
+	}
+	return right
 }
 
 func runChecks(ctx context.Context, env *config.Runtime, bundle *snapshot.Bundle) []model.CheckResult {

@@ -77,3 +77,21 @@ func TestLoadFileReadsYamlContent(t *testing.T) {
 		t.Fatalf("expected default_profile to be loaded, got %q", cfg.DefaultProfile)
 	}
 }
+
+func TestValidateRejectsInvalidFreshnessWindow(t *testing.T) {
+	cfg := Default()
+	cfg.Logs.FreshnessWindow = "not-a-duration"
+
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected invalid logs.freshness_window to fail validation")
+	}
+}
+
+func TestValidateRejectsNegativeDiagnosisLimit(t *testing.T) {
+	cfg := Default()
+	cfg.Diagnosis.MaxRootCauses = -1
+
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected negative diagnosis.max_root_causes to fail validation")
+	}
+}

@@ -9,9 +9,13 @@ func Default() Config {
 			Enabled: true,
 		},
 		Logs: LogConfig{
-			Enabled:         true,
-			TailLines:       300,
-			LookbackMinutes: 15,
+			Enabled:           true,
+			TailLines:         300,
+			LookbackMinutes:   15,
+			MinLinesPerSource: 20,
+			FreshnessWindow:   "15m",
+			MaxFiles:          12,
+			MaxBytesPerSource: 1024 * 1024,
 		},
 		Probe: ProbeConfig{
 			Enabled:      true,
@@ -25,6 +29,12 @@ func Default() Config {
 			Timeout:         "30s",
 			MetadataTimeout: "5s",
 			TCPTimeout:      "3s",
+			AdminAPITimeout: "15s",
+			JMXTimeout:      "5s",
+		},
+		Diagnosis: DiagnosisConfig{
+			MaxRootCauses:    3,
+			EnableConfidence: true,
 		},
 	}
 }
@@ -50,6 +60,7 @@ func Merge(base, override Config) Config {
 	result.Logs = mergeLogs(result.Logs, override.Logs)
 	result.Probe = mergeProbe(result.Probe, override.Probe)
 	result.Execution = mergeExecution(result.Execution, override.Execution)
+	result.Diagnosis = mergeDiagnosis(result.Diagnosis, override.Diagnosis)
 	return result
 }
 
@@ -102,6 +113,21 @@ func mergeLogs(base, override LogConfig) LogConfig {
 	if override.LookbackMinutes != 0 {
 		result.LookbackMinutes = override.LookbackMinutes
 	}
+	if override.MinLinesPerSource != 0 {
+		result.MinLinesPerSource = override.MinLinesPerSource
+	}
+	if override.FreshnessWindow != "" {
+		result.FreshnessWindow = override.FreshnessWindow
+	}
+	if override.MaxFiles != 0 {
+		result.MaxFiles = override.MaxFiles
+	}
+	if override.MaxBytesPerSource != 0 {
+		result.MaxBytesPerSource = override.MaxBytesPerSource
+	}
+	if override.CustomPatternsDir != "" {
+		result.CustomPatternsDir = override.CustomPatternsDir
+	}
 	return result
 }
 
@@ -138,5 +164,20 @@ func mergeExecution(base, override ExecutionConfig) ExecutionConfig {
 	if override.TCPTimeout != "" {
 		result.TCPTimeout = override.TCPTimeout
 	}
+	if override.AdminAPITimeout != "" {
+		result.AdminAPITimeout = override.AdminAPITimeout
+	}
+	if override.JMXTimeout != "" {
+		result.JMXTimeout = override.JMXTimeout
+	}
+	return result
+}
+
+func mergeDiagnosis(base, override DiagnosisConfig) DiagnosisConfig {
+	result := base
+	if override.MaxRootCauses != 0 {
+		result.MaxRootCauses = override.MaxRootCauses
+	}
+	result.EnableConfidence = result.EnableConfidence || override.EnableConfidence
 	return result
 }

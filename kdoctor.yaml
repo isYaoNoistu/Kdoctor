@@ -34,6 +34,11 @@ logs:
   enabled: true
   tail_lines: 300
   lookback_minutes: 15
+  min_lines_per_source: 20
+  freshness_window: "15m"
+  max_files: 12
+  max_bytes_per_source: 1048576
+  custom_patterns_dir: ""
   log_dir: ""
 
 probe:
@@ -49,3 +54,9 @@ execution:
   timeout: "30s"
   metadata_timeout: "5s"
   tcp_timeout: "3s"
+  admin_api_timeout: "15s"
+  jmx_timeout: "5s"
+
+diagnosis:
+  max_root_causes: 3
+  enable_confidence: true

@@ -15,6 +15,8 @@
 - 面向“现场可用性”和“误报控制”，缺少上下文时优先 `SKIP` 或降级，而不是机械报错。
 - `probe` 会优先检查 `_kdoctor_probe` 是否可用；主题不存在时会尝试自动创建，避免 fresh cluster 被误判成链路故障。
 - `probe` 结果已按阶段收口：上游阶段失败时，下游未执行项会标记为 `SKIP`，不会再把一处失败扩散成多条重复 `FAIL`。
+- 日志检查现在会显式给出每个来源的行数、字节数、最新时间、新鲜度和样本是否充足，不再把“采集成功”直接等价成“日志健康”。
+- 支持 `logs.custom_patterns_dir` 自定义日志指纹规则，可在内置规则之外追加团队自己的错误模式。
 
 ## 当前 V1 能力
 
@@ -133,6 +135,15 @@ go run ./cmd/kdoctor probe --bootstrap 192.168.1.1:9192 --format markdown --outp
 - `CLI-005` 对应整条端到端链路
 
 如果某个上游阶段已经失败，后续未执行阶段会显示为 `SKIP`，并附带失败阶段说明。
+
+日志相关配置里，当前最值得关注的是：
+
+- `logs.min_lines_per_source`
+- `logs.freshness_window`
+- `logs.max_files`
+- `logs.max_bytes_per_source`
+- `logs.custom_patterns_dir`
+- `diagnosis.max_root_causes`
 
 退出码约定：
 

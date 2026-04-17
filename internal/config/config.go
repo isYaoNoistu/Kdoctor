@@ -17,6 +17,7 @@ type Config struct {
 	Logs           LogConfig                `json:"logs" yaml:"logs"`
 	Probe          ProbeConfig              `json:"probe" yaml:"probe"`
 	Execution      ExecutionConfig          `json:"execution" yaml:"execution"`
+	Diagnosis      DiagnosisConfig          `json:"diagnosis" yaml:"diagnosis"`
 }
 
 type ProfileConfig struct {
@@ -37,10 +38,15 @@ type DockerConfig struct {
 }
 
 type LogConfig struct {
-	Enabled         bool   `json:"enabled" yaml:"enabled"`
-	LogDir          string `json:"log_dir" yaml:"log_dir"`
-	TailLines       int    `json:"tail_lines" yaml:"tail_lines"`
-	LookbackMinutes int    `json:"lookback_minutes" yaml:"lookback_minutes"`
+	Enabled           bool   `json:"enabled" yaml:"enabled"`
+	LogDir            string `json:"log_dir" yaml:"log_dir"`
+	TailLines         int    `json:"tail_lines" yaml:"tail_lines"`
+	LookbackMinutes   int    `json:"lookback_minutes" yaml:"lookback_minutes"`
+	MinLinesPerSource int    `json:"min_lines_per_source" yaml:"min_lines_per_source"`
+	FreshnessWindow   string `json:"freshness_window" yaml:"freshness_window"`
+	MaxFiles          int    `json:"max_files" yaml:"max_files"`
+	MaxBytesPerSource int    `json:"max_bytes_per_source" yaml:"max_bytes_per_source"`
+	CustomPatternsDir string `json:"custom_patterns_dir" yaml:"custom_patterns_dir"`
 }
 
 type ProbeConfig struct {
@@ -57,6 +63,13 @@ type ExecutionConfig struct {
 	Timeout         string `json:"timeout" yaml:"timeout"`
 	MetadataTimeout string `json:"metadata_timeout" yaml:"metadata_timeout"`
 	TCPTimeout      string `json:"tcp_timeout" yaml:"tcp_timeout"`
+	AdminAPITimeout string `json:"admin_api_timeout" yaml:"admin_api_timeout"`
+	JMXTimeout      string `json:"jmx_timeout" yaml:"jmx_timeout"`
+}
+
+type DiagnosisConfig struct {
+	MaxRootCauses    int  `json:"max_root_causes" yaml:"max_root_causes"`
+	EnableConfidence bool `json:"enable_confidence" yaml:"enable_confidence"`
 }
 
 func NormalizeInputPath(path string) string {

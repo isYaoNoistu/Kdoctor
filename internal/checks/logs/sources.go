@@ -2,7 +2,6 @@ package logs
 
 import (
 	"context"
-	"fmt"
 
 	"kdoctor/internal/rule"
 	"kdoctor/internal/snapshot"
@@ -18,20 +17,23 @@ func (SourcesChecker) Module() string { return "logs" }
 func (SourcesChecker) Run(_ context.Context, bundle *snapshot.Bundle) model.CheckResult {
 	logs := logSnap(bundle)
 	if logs == nil || !logs.Collected {
-		return rule.NewSkip("LOG-001", "log_sources", "logs", "log collection is not enabled in the current input mode")
+		return rule.NewSkip("LOG-001", "log_sources", "logs", "当前输入模式未启用日志采集")
 	}
 	if len(logs.Sources) == 0 {
-		result := rule.NewSkip("LOG-001", "log_sources", "logs", "no log sources were available from the current execution view")
+		result := rule.NewSkip("LOG-001", "log_sources", "logs", "当前执行视角没有可用的日志来源")
 		result.Evidence = append(result.Evidence, logs.Errors...)
 		return result
 	}
 
-	result := rule.NewPass("LOG-001", "log_sources", "logs", "log sources were collected successfully")
-	for _, source := range logs.Sources {
-		result.Evidence = append(result.Evidence, fmt.Sprintf("source=%s", source))
+	stale, sparse, empty := logSourceIssues(logs)
+	switch {
+	case empty > 0 || stale > 0 || sparse > 0 || len(logs.Warnings) > 0:
+		result := rule.NewWarn("LOG-001", "log_sources", "logs", "日志已采集，但部分来源内容不足或不够新鲜，日志结论可信度受限")
+		appendSourceEvidence(&result, logs)
+		return result
+	default:
+		result := rule.NewPass("LOG-001", "log_sources", "logs", "日志来源已采集，且样本足以支撑近期日志分析")
+		appendSourceEvidence(&result, logs)
+		return result
 	}
-	for _, err := range logs.Errors {
-		result.Evidence = append(result.Evidence, fmt.Sprintf("collector warning=%s", err))
-	}
-	return result
 }

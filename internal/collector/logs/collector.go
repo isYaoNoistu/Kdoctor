@@ -2,6 +2,7 @@ package logs
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -16,17 +17,38 @@ import (
 	"kdoctor/internal/config"
 	"kdoctor/internal/snapshot"
 	dockertransport "kdoctor/internal/transport/docker"
+
+	"gopkg.in/yaml.v3"
 )
 
 type Collector struct{}
 
 type fingerprint struct {
 	ID                string
+	Library           string
 	Pattern           *regexp.Regexp
 	Severity          string
 	Meaning           string
 	ProbableCauses    []string
 	RecommendedChecks []string
+}
+
+type sourceContent struct {
+	Content string
+	Stat    snapshot.LogSourceStat
+}
+
+type fingerprintFile struct {
+	Patterns []fingerprintSpec `json:"patterns" yaml:"patterns"`
+}
+
+type fingerprintSpec struct {
+	ID                string   `json:"id" yaml:"id"`
+	Pattern           string   `json:"pattern" yaml:"pattern"`
+	Severity          string   `json:"severity" yaml:"severity"`
+	Meaning           string   `json:"meaning" yaml:"meaning"`
+	ProbableCauses    []string `json:"probable_causes" yaml:"probable_causes"`
+	RecommendedChecks []string `json:"recommended_checks" yaml:"recommended_checks"`
 }
 
 func (Collector) Collect(ctx context.Context, env *config.Runtime, compose *snapshot.ComposeSnapshot, docker *snapshot.DockerSnapshot) *snapshot.LogSnapshot {
@@ -35,16 +57,20 @@ func (Collector) Collect(ctx context.Context, env *config.Runtime, compose *snap
 	}
 
 	out := &snapshot.LogSnapshot{Collected: true}
-	sourceContents := map[string]string{}
+	sourceContents := map[string]sourceContent{}
 
 	if logDir := strings.TrimSpace(env.LogDir); logDir != "" {
-		fileSources, errs := collectFileLogs(logDir, env.Config.Logs.TailLines, env.Config.Logs.LookbackMinutes)
-		for source, content := range fileSources {
-			sourceContents[source] = content
-		}
-		for _, err := range errs {
-			out.Errors = append(out.Errors, err.Error())
-		}
+		fileSources, warnings := collectFileLogs(
+			logDir,
+			env.Config.Logs.TailLines,
+			env.Config.Logs.LookbackMinutes,
+			env.LogMaxFiles,
+			env.LogMaxBytesPerSource,
+			env.LogFreshnessWindow,
+			env.LogMinLinesPerSource,
+		)
+		mergeSourceContents(sourceContents, fileSources)
+		out.Warnings = append(out.Warnings, warnings...)
 	}
 
 	if docker != nil && docker.Available {
@@ -56,13 +82,18 @@ func (Collector) Collect(ctx context.Context, env *config.Runtime, compose *snap
 		if env.Config.Logs.LookbackMinutes > 0 {
 			since = fmt.Sprintf("%dm", env.Config.Logs.LookbackMinutes)
 		}
+		observedAt := time.Now()
 		for _, name := range names {
 			content, err := dockertransport.Logs(ctx, name, env.Config.Logs.TailLines, since)
 			if err != nil {
 				out.Errors = append(out.Errors, err.Error())
 				continue
 			}
-			sourceContents["docker:"+name] = content
+			key := "docker:" + name
+			sourceContents[key] = sourceContent{
+				Content: content,
+				Stat:    buildSourceStat(key, "docker", content, observedAt, env.LogFreshnessWindow, env.LogMinLinesPerSource),
+			}
 		}
 	}
 
@@ -71,33 +102,55 @@ func (Collector) Collect(ctx context.Context, env *config.Runtime, compose *snap
 	}
 
 	out.Available = true
-	for source := range sourceContents {
+	patterns := fingerprints()
+	out.BuiltinPatternCount = len(patterns)
+
+	customPatterns, warnings := loadCustomFingerprints(env.LogCustomPatternsDir)
+	out.Warnings = append(out.Warnings, warnings...)
+	out.CustomPatternCount = len(customPatterns)
+	patterns = append(patterns, customPatterns...)
+
+	for source, item := range sourceContents {
 		out.Sources = append(out.Sources, source)
+		out.SourceStats = append(out.SourceStats, item.Stat)
 	}
 	sort.Strings(out.Sources)
-	out.Matches = aggregateMatches(sourceContents)
+	sort.SliceStable(out.SourceStats, func(i, j int) bool {
+		return out.SourceStats[i].Source < out.SourceStats[j].Source
+	})
+	out.Matches = aggregateMatches(sourceContents, patterns)
 	return out
 }
 
-func collectFileLogs(logDir string, tailLines int, lookbackMinutes int) (map[string]string, []error) {
-	sources := map[string]string{}
-	errs := []error{}
+func mergeSourceContents(target map[string]sourceContent, incoming map[string]sourceContent) {
+	for source, item := range incoming {
+		target[source] = item
+	}
+}
+
+func collectFileLogs(logDir string, tailLines int, lookbackMinutes int, maxFiles int, maxBytes int, freshnessWindow time.Duration, minLines int) (map[string]sourceContent, []string) {
+	sources := map[string]sourceContent{}
+	warnings := []string{}
 
 	root := strings.TrimSpace(logDir)
 	if root == "" {
-		return sources, errs
+		return sources, warnings
 	}
 	info, err := os.Stat(root)
 	if err != nil {
-		return sources, []error{fmt.Errorf("stat log dir: %w", err)}
+		return sources, []string{fmt.Sprintf("日志目录不可读: %v", err)}
 	}
 	if !info.IsDir() {
-		content, err := readTail(root, tailLines)
+		content, err := readTail(root, tailLines, maxBytes)
 		if err != nil {
-			return sources, []error{fmt.Errorf("read log file %s: %w", root, err)}
+			return sources, []string{fmt.Sprintf("读取日志文件失败 %s: %v", root, err)}
 		}
-		sources["file:"+root] = content
-		return sources, errs
+		key := "file:" + root
+		sources[key] = sourceContent{
+			Content: content,
+			Stat:    buildSourceStat(key, "file", content, info.ModTime(), freshnessWindow, minLines),
+		}
+		return sources, warnings
 	}
 
 	lookback := time.Time{}
@@ -108,40 +161,43 @@ func collectFileLogs(logDir string, tailLines int, lookbackMinutes int) (map[str
 	count := 0
 	walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			errs = append(errs, walkErr)
+			warnings = append(warnings, walkErr.Error())
 			return nil
 		}
-		if d.IsDir() {
+		if d.IsDir() || !isLogLike(path) {
 			return nil
 		}
-		if !isLogLike(path) {
-			return nil
-		}
-		if !lookback.IsZero() {
-			info, err := d.Info()
-			if err == nil && info.ModTime().Before(lookback) {
-				return nil
-			}
-		}
-		content, err := readTail(path, tailLines)
+		info, err := d.Info()
 		if err != nil {
-			errs = append(errs, fmt.Errorf("read log file %s: %w", path, err))
+			warnings = append(warnings, fmt.Sprintf("读取日志文件信息失败 %s: %v", path, err))
 			return nil
 		}
-		sources["file:"+path] = content
+		if !lookback.IsZero() && info.ModTime().Before(lookback) {
+			return nil
+		}
+		content, err := readTail(path, tailLines, maxBytes)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("读取日志文件失败 %s: %v", path, err))
+			return nil
+		}
+		key := "file:" + path
+		sources[key] = sourceContent{
+			Content: content,
+			Stat:    buildSourceStat(key, "file", content, info.ModTime(), freshnessWindow, minLines),
+		}
 		count++
-		if count >= 12 {
+		if maxFiles > 0 && count >= maxFiles {
 			return io.EOF
 		}
 		return nil
 	})
 	if walkErr != nil && walkErr != io.EOF {
-		errs = append(errs, walkErr)
+		warnings = append(warnings, walkErr.Error())
 	}
-	return sources, errs
+	return sources, warnings
 }
 
-func readTail(path string, tailLines int) (string, error) {
+func readTail(path string, tailLines int, maxBytes int) (string, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return "", err
@@ -153,15 +209,16 @@ func readTail(path string, tailLines int) (string, error) {
 		return "", err
 	}
 
-	const maxWindow = int64(512 * 1024)
 	window := info.Size()
-	if window > maxWindow {
-		window = maxWindow
+	if maxBytes > 0 && window > int64(maxBytes) {
+		window = int64(maxBytes)
 	}
 
-	if _, err := file.Seek(-window, io.SeekEnd); err != nil {
-		if _, err := file.Seek(0, io.SeekStart); err != nil {
-			return "", err
+	if window > 0 {
+		if _, err := file.Seek(-window, io.SeekEnd); err != nil {
+			if _, err := file.Seek(0, io.SeekStart); err != nil {
+				return "", err
+			}
 		}
 	}
 
@@ -178,6 +235,46 @@ func readTail(path string, tailLines int) (string, error) {
 	return strings.Join(lines[len(lines)-tailLines:], "\n"), nil
 }
 
+func buildSourceStat(source string, kind string, content string, lastModified time.Time, freshnessWindow time.Duration, minLines int) snapshot.LogSourceStat {
+	lines := countUsefulLines(content)
+	bytes := len([]byte(content))
+	empty := strings.TrimSpace(content) == ""
+
+	fresh := true
+	if !lastModified.IsZero() && freshnessWindow > 0 {
+		fresh = time.Since(lastModified) <= freshnessWindow
+	}
+	sufficient := true
+	if minLines > 0 {
+		sufficient = lines >= minLines
+	}
+
+	return snapshot.LogSourceStat{
+		Source:           source,
+		Kind:             kind,
+		Lines:            lines,
+		Bytes:            bytes,
+		LastModifiedUnix: lastModified.Unix(),
+		Fresh:            fresh,
+		SufficientLines:  sufficient,
+		Empty:            empty,
+	}
+}
+
+func countUsefulLines(content string) int {
+	if strings.TrimSpace(content) == "" {
+		return 0
+	}
+	lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
+	count := 0
+	for _, line := range lines {
+		if strings.TrimSpace(line) != "" {
+			count++
+		}
+	}
+	return count
+}
+
 func trimEmptyTail(lines []string) []string {
 	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
 		lines = lines[:len(lines)-1]
@@ -190,29 +287,30 @@ func isLogLike(path string) bool {
 	return strings.HasSuffix(lower, ".log") || strings.HasSuffix(lower, ".out") || strings.HasSuffix(lower, ".err")
 }
 
-func aggregateMatches(sourceContents map[string]string) []snapshot.LogPatternMatch {
+func aggregateMatches(sourceContents map[string]sourceContent, patterns []fingerprint) []snapshot.LogPatternMatch {
 	type aggregate struct {
 		match   snapshot.LogPatternMatch
 		sources map[string]struct{}
 	}
 
 	acc := map[string]*aggregate{}
-	for source, content := range sourceContents {
-		lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
+	for source, item := range sourceContents {
+		lines := strings.Split(strings.ReplaceAll(item.Content, "\r\n", "\n"), "\n")
 		for _, line := range lines {
 			line = strings.TrimSpace(line)
 			if line == "" {
 				continue
 			}
-			for _, fp := range fingerprints() {
+			for _, fp := range patterns {
 				if !fp.Pattern.MatchString(line) {
 					continue
 				}
-				current := acc[fp.ID]
+				current := acc[fp.Library+":"+fp.ID]
 				if current == nil {
 					current = &aggregate{
 						match: snapshot.LogPatternMatch{
 							ID:                fp.ID,
+							Library:           fp.Library,
 							Pattern:           fp.Pattern.String(),
 							Severity:          fp.Severity,
 							Meaning:           fp.Meaning,
@@ -222,7 +320,7 @@ func aggregateMatches(sourceContents map[string]string) []snapshot.LogPatternMat
 						},
 						sources: map[string]struct{}{},
 					}
-					acc[fp.ID] = current
+					acc[fp.Library+":"+fp.ID] = current
 				}
 				current.match.Count++
 				current.sources[source] = struct{}{}
@@ -245,9 +343,116 @@ func aggregateMatches(sourceContents map[string]string) []snapshot.LogPatternMat
 		if out[i].Count != out[j].Count {
 			return out[i].Count > out[j].Count
 		}
+		if out[i].Library != out[j].Library {
+			return out[i].Library < out[j].Library
+		}
 		return out[i].ID < out[j].ID
 	})
 	return out
+}
+
+func loadCustomFingerprints(dir string) ([]fingerprint, []string) {
+	root := strings.TrimSpace(dir)
+	if root == "" {
+		return nil, nil
+	}
+
+	info, err := os.Stat(root)
+	if err != nil {
+		return nil, []string{fmt.Sprintf("自定义日志指纹目录不可用: %v", err)}
+	}
+	if !info.IsDir() {
+		return nil, []string{fmt.Sprintf("自定义日志指纹目录不是文件夹: %s", root)}
+	}
+
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, []string{fmt.Sprintf("读取自定义日志指纹目录失败: %v", err)}
+	}
+
+	patterns := make([]fingerprint, 0)
+	warnings := make([]string, 0)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
+		if ext != ".json" && ext != ".yaml" && ext != ".yml" {
+			continue
+		}
+		path := filepath.Join(root, entry.Name())
+		specs, err := parseFingerprintSpecs(path)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("解析自定义日志指纹失败 %s: %v", path, err))
+			continue
+		}
+		for _, spec := range specs {
+			fp, err := compileFingerprint(spec, "custom")
+			if err != nil {
+				warnings = append(warnings, fmt.Sprintf("跳过自定义日志指纹 %s: %v", spec.ID, err))
+				continue
+			}
+			patterns = append(patterns, fp)
+		}
+	}
+	return patterns, warnings
+}
+
+func parseFingerprintSpecs(path string) ([]fingerprintSpec, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var direct []fingerprintSpec
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".json":
+		if err := json.Unmarshal(data, &direct); err == nil && len(direct) > 0 {
+			return direct, nil
+		}
+		var wrapped fingerprintFile
+		if err := json.Unmarshal(data, &wrapped); err != nil {
+			return nil, err
+		}
+		return wrapped.Patterns, nil
+	default:
+		if err := yaml.Unmarshal(data, &direct); err == nil && len(direct) > 0 {
+			return direct, nil
+		}
+		var wrapped fingerprintFile
+		if err := yaml.Unmarshal(data, &wrapped); err != nil {
+			return nil, err
+		}
+		return wrapped.Patterns, nil
+	}
+}
+
+func compileFingerprint(spec fingerprintSpec, library string) (fingerprint, error) {
+	if strings.TrimSpace(spec.ID) == "" {
+		return fingerprint{}, fmt.Errorf("missing id")
+	}
+	if strings.TrimSpace(spec.Pattern) == "" {
+		return fingerprint{}, fmt.Errorf("missing pattern")
+	}
+	re, err := regexp.Compile(spec.Pattern)
+	if err != nil {
+		return fingerprint{}, fmt.Errorf("compile pattern: %w", err)
+	}
+
+	severity := strings.ToLower(strings.TrimSpace(spec.Severity))
+	if severity == "" {
+		severity = "warn"
+	}
+
+	return fingerprint{
+		ID:                spec.ID,
+		Library:           library,
+		Pattern:           re,
+		Severity:          severity,
+		Meaning:           strings.TrimSpace(spec.Meaning),
+		ProbableCauses:    append([]string(nil), spec.ProbableCauses...),
+		RecommendedChecks: append([]string(nil), spec.RecommendedChecks...),
+	}, nil
 }
 
 func fingerprints() []fingerprint {
@@ -273,6 +478,7 @@ func fingerprints() []fingerprint {
 func newFingerprint(id string, pattern string, severity string, meaning string, causes []string, checks []string) fingerprint {
 	return fingerprint{
 		ID:                id,
+		Library:           "builtin",
 		Pattern:           regexp.MustCompile(pattern),
 		Severity:          severity,
 		Meaning:           meaning,

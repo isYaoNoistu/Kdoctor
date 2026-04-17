@@ -36,7 +36,10 @@ func (r *Runner) Run(ctx context.Context, env *config.Runtime) (model.Report, er
 	}
 	report.ElapsedMs = time.Since(startedAt).Milliseconds()
 	report.Finalize()
-	diagnose.RootCause{}.Diagnose(&report)
+	diagnose.RootCause{
+		MaxCauses:        env.DiagnosisMaxRootCauses,
+		EnableConfidence: env.DiagnosisEnableConfidence,
+	}.Diagnose(&report)
 	diagnose.Incident{}.Summarize(&report)
 	return report, nil
 }

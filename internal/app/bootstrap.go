@@ -49,9 +49,21 @@ func Bootstrap(opts Options) (*config.Runtime, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve tcp timeout: %w", err)
 	}
+	adminAPITimeout, err := parseDurationOrDefault("", cfg.Execution.AdminAPITimeout)
+	if err != nil {
+		return nil, fmt.Errorf("resolve admin api timeout: %w", err)
+	}
+	jmxTimeout, err := parseDurationOrDefault("", cfg.Execution.JMXTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("resolve jmx timeout: %w", err)
+	}
 	probeTimeout, err := parseDurationOrDefault("", cfg.Probe.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("resolve probe timeout: %w", err)
+	}
+	logFreshnessWindow, err := parseDurationOrDefault("", cfg.Logs.FreshnessWindow)
+	if err != nil {
+		return nil, fmt.Errorf("resolve logs freshness window: %w", err)
 	}
 
 	composePath := config.NormalizeInputPath(cfg.Docker.ComposeFile)
@@ -63,31 +75,41 @@ func Bootstrap(opts Options) (*config.Runtime, error) {
 	if opts.LogDir != "" {
 		logDir = config.NormalizeInputPath(opts.LogDir)
 	}
+	logCustomPatternsDir := config.NormalizeInputPath(cfg.Logs.CustomPatternsDir)
 
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
 	return &config.Runtime{
-		Mode:                  opts.Mode,
-		ProfileName:           selectedProfile,
-		Config:                cfg,
-		SelectedProfile:       profileCfg,
-		BootstrapInternal:     internalBootstraps,
-		BootstrapExternal:     externalBootstraps,
-		ControllerEndpoints:   profileCfg.ControllerEndpoints,
-		ComposePath:           composePath,
-		LogDir:                logDir,
-		EnableDocker:          cfg.Docker.Enabled,
-		EnableHost:            true,
-		EnableJMX:             false,
-		ProbeTopic:            cfg.Probe.Topic,
-		ProbeGroupPrefix:      cfg.Probe.GroupPrefix,
-		ProbeTimeout:          probeTimeout,
-		ProbeMessageBytes:     cfg.Probe.MessageBytes,
-		ProbeProduceCount:     cfg.Probe.ProduceCount,
-		Timeout:               timeout,
-		MetadataTimeout:       metadataTimeout,
-		TCPTimeout:            tcpTimeout,
-		MinimumOutputSeverity: opts.Severity,
-		Logger:                logger,
+		Mode:                      opts.Mode,
+		ProfileName:               selectedProfile,
+		Config:                    cfg,
+		SelectedProfile:           profileCfg,
+		BootstrapInternal:         internalBootstraps,
+		BootstrapExternal:         externalBootstraps,
+		ControllerEndpoints:       profileCfg.ControllerEndpoints,
+		ComposePath:               composePath,
+		LogDir:                    logDir,
+		EnableDocker:              cfg.Docker.Enabled,
+		EnableHost:                true,
+		EnableJMX:                 false,
+		LogFreshnessWindow:        logFreshnessWindow,
+		LogMinLinesPerSource:      cfg.Logs.MinLinesPerSource,
+		LogMaxFiles:               cfg.Logs.MaxFiles,
+		LogMaxBytesPerSource:      cfg.Logs.MaxBytesPerSource,
+		LogCustomPatternsDir:      logCustomPatternsDir,
+		ProbeTopic:                cfg.Probe.Topic,
+		ProbeGroupPrefix:          cfg.Probe.GroupPrefix,
+		ProbeTimeout:              probeTimeout,
+		ProbeMessageBytes:         cfg.Probe.MessageBytes,
+		ProbeProduceCount:         cfg.Probe.ProduceCount,
+		Timeout:                   timeout,
+		MetadataTimeout:           metadataTimeout,
+		TCPTimeout:                tcpTimeout,
+		AdminAPITimeout:           adminAPITimeout,
+		JMXTimeout:                jmxTimeout,
+		DiagnosisMaxRootCauses:    cfg.Diagnosis.MaxRootCauses,
+		DiagnosisEnableConfidence: cfg.Diagnosis.EnableConfidence,
+		MinimumOutputSeverity:     opts.Severity,
+		Logger:                    logger,
 	}, nil
 }

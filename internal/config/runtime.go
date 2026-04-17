@@ -6,26 +6,35 @@ import (
 )
 
 type Runtime struct {
-	Mode                  string
-	ProfileName           string
-	Config                Config
-	SelectedProfile       ProfileConfig
-	BootstrapInternal     []string
-	BootstrapExternal     []string
-	ControllerEndpoints   []string
-	ComposePath           string
-	LogDir                string
-	EnableDocker          bool
-	EnableHost            bool
-	EnableJMX             bool
-	ProbeTopic            string
-	ProbeGroupPrefix      string
-	ProbeTimeout          time.Duration
-	ProbeMessageBytes     int
-	ProbeProduceCount     int
-	Timeout               time.Duration
-	MetadataTimeout       time.Duration
-	TCPTimeout            time.Duration
-	MinimumOutputSeverity string
-	Logger                *slog.Logger
+	Mode                      string
+	ProfileName               string
+	Config                    Config
+	SelectedProfile           ProfileConfig
+	BootstrapInternal         []string
+	BootstrapExternal         []string
+	ControllerEndpoints       []string
+	ComposePath               string
+	LogDir                    string
+	EnableDocker              bool
+	EnableHost                bool
+	EnableJMX                 bool
+	LogFreshnessWindow        time.Duration
+	LogMinLinesPerSource      int
+	LogMaxFiles               int
+	LogMaxBytesPerSource      int
+	LogCustomPatternsDir      string
+	ProbeTopic                string
+	ProbeGroupPrefix          string
+	ProbeTimeout              time.Duration
+	ProbeMessageBytes         int
+	ProbeProduceCount         int
+	Timeout                   time.Duration
+	MetadataTimeout           time.Duration
+	TCPTimeout                time.Duration
+	AdminAPITimeout           time.Duration
+	JMXTimeout                time.Duration
+	DiagnosisMaxRootCauses    int
+	DiagnosisEnableConfidence bool
+	MinimumOutputSeverity     string
+	Logger                    *slog.Logger
 }

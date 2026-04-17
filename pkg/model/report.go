@@ -34,7 +34,7 @@ type Report struct {
 
 func NewReport(mode, profile string, checkedAt time.Time) Report {
 	return Report{
-		ToolVersion: "0.1.0",
+		ToolVersion: "1.0.0",
 		Mode:        mode,
 		Profile:     profile,
 		CheckedAt:   checkedAt,
