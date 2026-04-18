@@ -57,6 +57,10 @@ func Bootstrap(opts Options) (*config.Runtime, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve jmx timeout: %w", err)
 	}
+	jmxScrapeTimeout, err := parseDurationOrDefault("", cfg.JMX.ScrapeTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("resolve jmx scrape timeout: %w", err)
+	}
 	probeTimeout, err := parseDurationOrDefault("", cfg.Probe.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("resolve probe timeout: %w", err)
@@ -90,8 +94,8 @@ func Bootstrap(opts Options) (*config.Runtime, error) {
 		ComposePath:               composePath,
 		LogDir:                    logDir,
 		EnableDocker:              cfg.Docker.Enabled,
-		EnableHost:                true,
-		EnableJMX:                 false,
+		EnableHost:                cfg.Host.Enabled,
+		EnableJMX:                 cfg.JMX.Enabled,
 		LogFreshnessWindow:        logFreshnessWindow,
 		LogMinLinesPerSource:      cfg.Logs.MinLinesPerSource,
 		LogMaxFiles:               cfg.Logs.MaxFiles,
@@ -107,6 +111,9 @@ func Bootstrap(opts Options) (*config.Runtime, error) {
 		TCPTimeout:                tcpTimeout,
 		AdminAPITimeout:           adminAPITimeout,
 		JMXTimeout:                jmxTimeout,
+		JMXScrapeTimeout:          jmxScrapeTimeout,
+		JMXPath:                   cfg.JMX.Path,
+		JMXEndpoints:              append([]string(nil), cfg.JMX.Endpoints...),
 		DiagnosisMaxRootCauses:    cfg.Diagnosis.MaxRootCauses,
 		DiagnosisEnableConfidence: cfg.Diagnosis.EnableConfidence,
 		MinimumOutputSeverity:     opts.Severity,

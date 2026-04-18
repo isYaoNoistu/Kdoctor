@@ -26,12 +26,23 @@ func Stat(path string) (Usage, error) {
 	if total > 0 {
 		percent = float64(used) * 100 / float64(total)
 	}
+	totalInodes := int64(stat.Files)
+	availableInodes := int64(stat.Ffree)
+	usedInodes := totalInodes - availableInodes
+	inodePercent := 0.0
+	if totalInodes > 0 {
+		inodePercent = float64(usedInodes) * 100 / float64(totalInodes)
+	}
 
 	return Usage{
-		Path:           absolute,
-		TotalBytes:     total,
-		AvailableBytes: available,
-		UsedBytes:      used,
-		UsedPercent:    percent,
+		Path:            absolute,
+		TotalBytes:      total,
+		AvailableBytes:  available,
+		UsedBytes:       used,
+		UsedPercent:     percent,
+		TotalInodes:     totalInodes,
+		AvailableInodes: availableInodes,
+		UsedInodes:      usedInodes,
+		UsedInodePct:    inodePercent,
 	}, nil
 }

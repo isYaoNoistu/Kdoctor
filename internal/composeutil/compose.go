@@ -15,6 +15,7 @@ type KafkaService struct {
 	ContainerName string
 	Image         string
 	NetworkMode   string
+	MemLimit      string
 	Environment   map[string]string
 	Volumes       []string
 }
@@ -31,6 +32,23 @@ type VolumeMount struct {
 	Destination string
 	Mode        string
 	NamedVolume bool
+}
+
+func ParseListenerProtocolMap(input string) map[string]string {
+	out := map[string]string{}
+	for _, item := range ParseCSV(input) {
+		parts := strings.SplitN(item, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		name := strings.TrimSpace(parts[0])
+		protocol := strings.ToUpper(strings.TrimSpace(parts[1]))
+		if name == "" || protocol == "" {
+			continue
+		}
+		out[name] = protocol
+	}
+	return out
 }
 
 func KafkaServices(compose *snapshot.ComposeSnapshot) []KafkaService {
@@ -55,6 +73,7 @@ func KafkaServices(compose *snapshot.ComposeSnapshot) []KafkaService {
 			ContainerName: service.ContainerName,
 			Image:         service.Image,
 			NetworkMode:   service.NetworkMode,
+			MemLimit:      service.MemLimit,
 			Environment:   cloneMap(service.Environment),
 			Volumes:       append([]string(nil), service.Volumes...),
 		})

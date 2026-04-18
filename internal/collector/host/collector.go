@@ -28,7 +28,8 @@ func (Collector) Collect(ctx context.Context, env *config.Runtime, compose *snap
 	}
 
 	diskTargets := collectDiskTargets(env, compose, docker)
-	hostContext := len(diskTargets) > 0 || (docker != nil && docker.Available)
+	configuredPorts := collectConfiguredPorts(env)
+	hostContext := len(diskTargets) > 0 || len(configuredPorts) > 0 || (docker != nil && docker.Available)
 	if len(diskTargets) == 0 && !hostContext {
 		out.Errors = append(out.Errors, "host-level evidence is not available from the current input mode")
 		return out
@@ -41,16 +42,21 @@ func (Collector) Collect(ctx context.Context, env *config.Runtime, compose *snap
 			continue
 		}
 		out.DiskUsages = append(out.DiskUsages, snapshot.DiskUsage{
-			Path:           usage.Path,
-			TotalBytes:     usage.TotalBytes,
-			AvailableBytes: usage.AvailableBytes,
-			UsedBytes:      usage.UsedBytes,
-			UsedPercent:    usage.UsedPercent,
+			Path:            usage.Path,
+			TotalBytes:      usage.TotalBytes,
+			AvailableBytes:  usage.AvailableBytes,
+			UsedBytes:       usage.UsedBytes,
+			UsedPercent:     usage.UsedPercent,
+			TotalInodes:     usage.TotalInodes,
+			AvailableInodes: usage.AvailableInodes,
+			UsedInodes:      usage.UsedInodes,
+			UsedInodePct:    usage.UsedInodePct,
 		})
 	}
 
 	if hostContext {
-		for _, address := range collectListenerTargets(compose) {
+		listeners := append(collectListenerTargets(compose), configuredPorts...)
+		for _, address := range dedupeStrings(listeners) {
 			result := tcp.Dial(ctx, address, env.TCPTimeout)
 			out.PortChecks = append(out.PortChecks, snapshot.EndpointCheck{
 				Kind:       "listener",
@@ -62,7 +68,19 @@ func (Collector) Collect(ctx context.Context, env *config.Runtime, compose *snap
 		}
 	}
 
-	out.Available = len(out.DiskUsages) > 0 || len(out.PortChecks) > 0
+	signals := collectSystemSignals(ctx)
+	if signals.FD != nil {
+		out.FD = signals.FD
+	}
+	if signals.Memory != nil {
+		out.Memory = signals.Memory
+	}
+	if len(signals.ListenPorts) > 0 {
+		out.ObservedListenPorts = append(out.ObservedListenPorts, signals.ListenPorts...)
+	}
+	out.Errors = append(out.Errors, signals.Errors...)
+
+	out.Available = len(out.DiskUsages) > 0 || len(out.PortChecks) > 0 || out.FD != nil || out.Memory != nil || len(out.ObservedListenPorts) > 0
 	return out
 }
 
@@ -70,6 +88,11 @@ func collectDiskTargets(env *config.Runtime, compose *snapshot.ComposeSnapshot, 
 	targets := []string{}
 	if path := existingPath(strings.TrimSpace(env.LogDir)); path != "" {
 		targets = append(targets, path)
+	}
+	for _, diskPath := range env.Config.Host.DiskPaths {
+		if path := existingPath(strings.TrimSpace(diskPath)); path != "" {
+			targets = append(targets, path)
+		}
 	}
 
 	for _, service := range composeutil.KafkaServices(compose) {
@@ -104,6 +127,20 @@ func collectListenerTargets(compose *snapshot.ComposeSnapshot) []string {
 		}
 	}
 	return dedupeStrings(targets)
+}
+
+func collectConfiguredPorts(env *config.Runtime) []string {
+	if env == nil {
+		return nil
+	}
+	addresses := []string{}
+	for _, port := range env.Config.Host.CheckPorts {
+		if port <= 0 {
+			continue
+		}
+		addresses = append(addresses, fmt.Sprintf("127.0.0.1:%d", port))
+	}
+	return dedupeStrings(addresses)
 }
 
 func containerLogDirs(service composeutil.KafkaService) []string {
@@ -240,4 +277,11 @@ func hasContainerPathPrefix(pathValue, prefix string) bool {
 		return true
 	}
 	return strings.HasPrefix(pathValue, prefix+"/")
+}
+
+type systemSignals struct {
+	FD          *snapshot.FDStats
+	Memory      *snapshot.MemoryStats
+	ListenPorts []int
+	Errors      []string
 }

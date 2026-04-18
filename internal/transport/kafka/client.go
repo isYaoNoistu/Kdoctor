@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/IBM/sarama"
@@ -32,6 +33,35 @@ type PartitionMetadata struct {
 	LeaderID *int32
 	Replicas []int32
 	ISR      []int32
+}
+
+type ConsumerGroupLagTarget struct {
+	Name    string
+	GroupID string
+	Topic   string
+}
+
+type ConsumerGroupLag struct {
+	Name            string
+	GroupID         string
+	Topic           string
+	State           string
+	Coordinator     string
+	MemberCount     int
+	TotalLag        int64
+	MaxPartitionLag int64
+	MaxLagPartition int32
+	MissingOffsets  int
+	Error           string
+	Partitions      []ConsumerGroupPartitionLag
+}
+
+type ConsumerGroupPartitionLag struct {
+	Partition          int32
+	CommittedOffset    int64
+	EndOffset          int64
+	Lag                int64
+	HasCommittedOffset bool
 }
 
 type ProbeMessage struct {
@@ -63,6 +93,114 @@ func TopicExists(meta *Metadata, topic string) bool {
 		}
 	}
 	return false
+}
+
+func FetchConsumerGroupLag(brokers []string, timeout time.Duration, targets []ConsumerGroupLagTarget) ([]ConsumerGroupLag, error) {
+	cfg := newConfig(timeout)
+	client, err := sarama.NewClient(brokers, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("create kafka client: %w", err)
+	}
+	defer client.Close()
+
+	admin, err := sarama.NewClusterAdminFromClient(client)
+	if err != nil {
+		return nil, fmt.Errorf("create cluster admin: %w", err)
+	}
+	defer admin.Close()
+
+	results := make([]ConsumerGroupLag, 0, len(targets))
+	for _, target := range targets {
+		groupID := strings.TrimSpace(target.GroupID)
+		if groupID == "" {
+			groupID = strings.TrimSpace(target.Name)
+		}
+		topic := strings.TrimSpace(target.Topic)
+		if groupID == "" || topic == "" {
+			continue
+		}
+
+		current := ConsumerGroupLag{
+			Name:            strings.TrimSpace(target.Name),
+			GroupID:         groupID,
+			Topic:           topic,
+			MaxLagPartition: -1,
+		}
+
+		if descriptions, err := admin.DescribeConsumerGroups([]string{groupID}); err == nil && len(descriptions) > 0 && descriptions[0] != nil {
+			current.State = descriptions[0].State
+			current.MemberCount = len(descriptions[0].Members)
+			if descriptions[0].Err != sarama.ErrNoError {
+				current.Error = fmt.Sprintf("describe consumer group: %v", descriptions[0].Err)
+			}
+		} else if err != nil {
+			current.Error = fmt.Sprintf("describe consumer group: %v", err)
+		}
+
+		if coordinator, err := admin.Coordinator(groupID); err == nil && coordinator != nil {
+			current.Coordinator = coordinator.Addr()
+		} else if current.Error == "" && err != nil {
+			current.Error = fmt.Sprintf("resolve coordinator: %v", err)
+		}
+
+		partitions, err := client.Partitions(topic)
+		if err != nil {
+			current.Error = firstNonEmpty(current.Error, fmt.Sprintf("list topic partitions: %v", err))
+			results = append(results, current)
+			continue
+		}
+
+		offsets, err := admin.ListConsumerGroupOffsets(groupID, map[string][]int32{topic: partitions})
+		if err != nil {
+			current.Error = firstNonEmpty(current.Error, fmt.Sprintf("list consumer group offsets: %v", err))
+			results = append(results, current)
+			continue
+		}
+
+		for _, partition := range partitions {
+			info := ConsumerGroupPartitionLag{
+				Partition:       partition,
+				CommittedOffset: -1,
+				EndOffset:       -1,
+			}
+
+			block := offsets.GetBlock(topic, partition)
+			if block != nil {
+				if block.Err != sarama.ErrNoError {
+					current.Error = firstNonEmpty(current.Error, fmt.Sprintf("offset block error on %s[%d]: %v", topic, partition, block.Err))
+				} else {
+					info.CommittedOffset = block.Offset
+					info.HasCommittedOffset = block.Offset >= 0
+				}
+			}
+			if !info.HasCommittedOffset {
+				current.MissingOffsets++
+			}
+
+			endOffset, err := client.GetOffset(topic, partition, sarama.OffsetNewest)
+			if err != nil {
+				current.Error = firstNonEmpty(current.Error, fmt.Sprintf("get end offset on %s[%d]: %v", topic, partition, err))
+				current.Partitions = append(current.Partitions, info)
+				continue
+			}
+			info.EndOffset = endOffset
+
+			if info.HasCommittedOffset && endOffset >= info.CommittedOffset {
+				info.Lag = endOffset - info.CommittedOffset
+				current.TotalLag += info.Lag
+				if info.Lag > current.MaxPartitionLag {
+					current.MaxPartitionLag = info.Lag
+					current.MaxLagPartition = partition
+				}
+			}
+
+			current.Partitions = append(current.Partitions, info)
+		}
+
+		results = append(results, current)
+	}
+
+	return results, nil
 }
 
 func FetchMetadata(brokers []string, timeout time.Duration) (*Metadata, error) {
@@ -325,4 +463,13 @@ func waitForTopicState(brokers []string, timeout time.Duration, topic string, sh
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }

@@ -18,9 +18,12 @@ type brokerConfig struct {
 	ClusterID                string
 	ProcessRoles             []string
 	ControllerQuorumVoters   string
+	ControllerListenerNames  string
 	Listeners                string
 	AdvertisedListeners      string
 	InterBrokerListenerName  string
+	MetadataLogDir           string
+	NumPartitions            int
 	DefaultReplicationFactor int
 	OffsetsReplicationFactor int
 	TxnReplicationFactor     int
@@ -59,9 +62,12 @@ func kafkaServices(compose *snapshot.ComposeSnapshot) []brokerConfig {
 			ClusterID:                strings.TrimSpace(service.Environment["KAFKA_CLUSTER_ID"]),
 			ProcessRoles:             splitCSV(service.Environment["KAFKA_CFG_PROCESS_ROLES"]),
 			ControllerQuorumVoters:   strings.TrimSpace(service.Environment["KAFKA_CFG_CONTROLLER_QUORUM_VOTERS"]),
+			ControllerListenerNames:  strings.TrimSpace(service.Environment["KAFKA_CFG_CONTROLLER_LISTENER_NAMES"]),
 			Listeners:                strings.TrimSpace(service.Environment["KAFKA_CFG_LISTENERS"]),
 			AdvertisedListeners:      strings.TrimSpace(service.Environment["KAFKA_CFG_ADVERTISED_LISTENERS"]),
 			InterBrokerListenerName:  strings.TrimSpace(service.Environment["KAFKA_CFG_INTER_BROKER_LISTENER_NAME"]),
+			MetadataLogDir:           strings.TrimSpace(service.Environment["KAFKA_CFG_METADATA_LOG_DIR"]),
+			NumPartitions:            mustAtoi(service.Environment["KAFKA_CFG_NUM_PARTITIONS"]),
 			DefaultReplicationFactor: mustAtoi(service.Environment["KAFKA_CFG_DEFAULT_REPLICATION_FACTOR"]),
 			OffsetsReplicationFactor: mustAtoi(service.Environment["KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR"]),
 			TxnReplicationFactor:     mustAtoi(service.Environment["KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR"]),

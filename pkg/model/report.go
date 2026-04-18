@@ -16,6 +16,8 @@ type Summary struct {
 	ErrorCount         int         `json:"error_count"`
 	SkipCount          int         `json:"skip_count"`
 	Overview           string      `json:"overview,omitempty"`
+	DataSourceCoverage []string    `json:"data_source_coverage,omitempty"`
+	DegradedTasks      []string    `json:"degraded_tasks,omitempty"`
 	RootCauses         []string    `json:"root_causes,omitempty"`
 	RecommendedActions []string    `json:"recommended_actions,omitempty"`
 }
@@ -34,7 +36,7 @@ type Report struct {
 
 func NewReport(mode, profile string, checkedAt time.Time) Report {
 	return Report{
-		ToolVersion: "1.0.0",
+		ToolVersion: "2.0.0-alpha.1",
 		Mode:        mode,
 		Profile:     profile,
 		CheckedAt:   checkedAt,
@@ -95,6 +97,8 @@ func (r *Report) Finalize() {
 	summary.BrokerAlive = r.Summary.BrokerAlive
 	summary.ControllerOK = r.Summary.ControllerOK
 	summary.Overview = r.Summary.Overview
+	summary.DataSourceCoverage = r.Summary.DataSourceCoverage
+	summary.DegradedTasks = r.Summary.DegradedTasks
 	summary.RootCauses = r.Summary.RootCauses
 	summary.RecommendedActions = r.Summary.RecommendedActions
 	r.Summary = summary

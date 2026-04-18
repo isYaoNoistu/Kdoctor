@@ -30,6 +30,20 @@ func (Renderer) Render(report model.Report) ([]byte, error) {
 	if report.Summary.Overview != "" {
 		fmt.Fprintf(&buf, "## 概览\n\n%s\n\n", report.Summary.Overview)
 	}
+	if len(report.Summary.DataSourceCoverage) > 0 {
+		buf.WriteString("## 采集覆盖\n\n")
+		for _, item := range report.Summary.DataSourceCoverage {
+			fmt.Fprintf(&buf, "- %s\n", item)
+		}
+		buf.WriteString("\n")
+	}
+	if len(report.Summary.DegradedTasks) > 0 {
+		buf.WriteString("## 采集降级\n\n")
+		for _, item := range report.Summary.DegradedTasks {
+			fmt.Fprintf(&buf, "- %s\n", item)
+		}
+		buf.WriteString("\n")
+	}
 	if len(report.Summary.RootCauses) > 0 {
 		buf.WriteString("## 主因判断\n\n")
 		for _, cause := range report.Summary.RootCauses {

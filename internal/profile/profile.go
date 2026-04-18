@@ -5,6 +5,8 @@ import "kdoctor/internal/config"
 func BuiltinProfiles() map[string]config.ProfileConfig {
 	return map[string]config.ProfileConfig{
 		"generic-bootstrap": {
+			ExecutionView:     "auto",
+			SecurityMode:      "plaintext",
 			PlaintextExternal: true,
 		},
 		"single-host-3broker-kraft-prod": {
@@ -14,6 +16,8 @@ func BuiltinProfiles() map[string]config.ProfileConfig {
 			BrokerCount:               3,
 			ExpectedMinISR:            2,
 			ExpectedReplicationFactor: 3,
+			ExecutionView:             "external",
+			SecurityMode:              "plaintext",
 			HostNetwork:               true,
 			PlaintextExternal:         true,
 		},
@@ -24,6 +28,8 @@ func BuiltinProfiles() map[string]config.ProfileConfig {
 			BrokerCount:               3,
 			ExpectedMinISR:            2,
 			ExpectedReplicationFactor: 3,
+			ExecutionView:             "external",
+			SecurityMode:              "plaintext",
 			HostNetwork:               true,
 			PlaintextExternal:         true,
 		},

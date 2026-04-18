@@ -48,10 +48,14 @@ func Stat(path string) (Usage, error) {
 	}
 
 	return Usage{
-		Path:           absolute,
-		TotalBytes:     total,
-		AvailableBytes: available,
-		UsedBytes:      used,
-		UsedPercent:    percent,
+		Path:            absolute,
+		TotalBytes:      total,
+		AvailableBytes:  available,
+		UsedBytes:       used,
+		UsedPercent:     percent,
+		TotalInodes:     0,
+		AvailableInodes: 0,
+		UsedInodes:      0,
+		UsedInodePct:    0,
 	}, nil
 }

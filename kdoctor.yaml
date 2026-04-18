@@ -1,4 +1,4 @@
-version: 1
+version: 2
 
 default_profile: master-internal-kraft-prod
 
@@ -19,6 +19,27 @@ profiles:
     broker_count: 3
     expected_min_isr: 2
     expected_replication_factor: 3
+    execution_view: "internal"
+    security_mode: "plaintext"
+    sasl_mechanism: ""
+    group_probe_targets: []
+    producer:
+      acks: "all"
+      enable_idempotence: true
+      retries: 3
+      max_in_flight: 5
+      delivery_timeout_ms: 120000
+      request_timeout_ms: 30000
+      linger_ms: 0
+      expected_durability: "strong"
+      transactional_id: ""
+      transaction_timeout_ms: 0
+    consumer:
+      max_poll_interval_ms: 300000
+      session_timeout_ms: 45000
+      heartbeat_interval_ms: 15000
+      auto_offset_reset: "latest"
+      isolation_level: "read_uncommitted"
     host_network: true
     plaintext_external: true
 
@@ -29,6 +50,7 @@ docker:
     - "kafka1"
     - "kafka2"
     - "kafka3"
+  inspect_mounts: true
 
 logs:
   enabled: true
@@ -49,6 +71,10 @@ probe:
   message_bytes: 1024
   produce_count: 1
   cleanup: false
+  acks: "all"
+  enable_idempotence: false
+  cleanup_mode: "disabled"
+  tx_probe_enabled: false
 
 execution:
   timeout: "30s"
@@ -57,6 +83,50 @@ execution:
   admin_api_timeout: "15s"
   jmx_timeout: "5s"
 
+jmx:
+  enabled: false
+  scrape_timeout: "5s"
+  path: "/metrics"
+  endpoints: []
+  metric_sets:
+    - "kraft"
+    - "broker"
+    - "replica"
+    - "request"
+    - "quota"
+    - "jvm"
+
+host:
+  enabled: true
+  disk_paths: []
+  check_ports: []
+  fd_warn_pct: 70
+  fd_crit_pct: 85
+  clock_skew_warn_ms: 500
+
+thresholds:
+  urp_warn: 1
+  under_min_isr_crit: 1
+  network_idle_warn: 0.3
+  request_idle_warn: 0.3
+  disk_warn_pct: 75
+  disk_crit_pct: 85
+  inode_warn_pct: 80
+  replica_lag_warn: 10000
+  leader_skew_warn_pct: 30
+  consumer_lag_warn: 1000
+  consumer_lag_crit: 10000
+  cert_expiry_warn_days: 30
+  produce_throttle_warn_ms: 1
+  fetch_throttle_warn_ms: 1
+  request_latency_warn_ms: 100
+  purgatory_warn_count: 1
+  heap_used_warn_pct: 85
+  gc_pause_warn_ms: 200
+
 diagnosis:
   max_root_causes: 3
   enable_confidence: true
+  suppress_downstream_symptoms: true
+  rule_packs:
+    - "builtin"

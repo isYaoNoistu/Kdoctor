@@ -33,6 +33,9 @@ type Runtime struct {
 	TCPTimeout                time.Duration
 	AdminAPITimeout           time.Duration
 	JMXTimeout                time.Duration
+	JMXScrapeTimeout          time.Duration
+	JMXPath                   string
+	JMXEndpoints              []string
 	DiagnosisMaxRootCauses    int
 	DiagnosisEnableConfidence bool
 	MinimumOutputSeverity     string

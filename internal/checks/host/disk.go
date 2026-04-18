@@ -9,15 +9,26 @@ import (
 	"kdoctor/pkg/model"
 )
 
-type DiskChecker struct{}
+type DiskChecker struct {
+	WarnPercent float64
+	CritPercent float64
+}
 
 func (DiskChecker) ID() string     { return "HOST-004" }
 func (DiskChecker) Name() string   { return "disk_space" }
 func (DiskChecker) Module() string { return "host" }
 
-func (DiskChecker) Run(_ context.Context, snap *snapshot.Bundle) model.CheckResult {
+func (c DiskChecker) Run(_ context.Context, snap *snapshot.Bundle) model.CheckResult {
 	if snap == nil || snap.Host == nil || !snap.Host.Collected || len(snap.Host.DiskUsages) == 0 {
 		return rule.NewSkip("HOST-004", "disk_space", "host", "host disk usage is not available in the current input mode")
+	}
+	warnPercent := c.WarnPercent
+	critPercent := c.CritPercent
+	if warnPercent <= 0 {
+		warnPercent = 85
+	}
+	if critPercent <= 0 {
+		critPercent = 95
 	}
 
 	evidence := []string{}
@@ -27,9 +38,9 @@ func (DiskChecker) Run(_ context.Context, snap *snapshot.Bundle) model.CheckResu
 	for _, usage := range snap.Host.DiskUsages {
 		evidence = append(evidence, fmt.Sprintf("%s used=%.1f%% free=%d bytes", usage.Path, usage.UsedPercent, usage.AvailableBytes))
 		switch {
-		case usage.UsedPercent >= 95:
+		case usage.UsedPercent >= critPercent:
 			failCount++
-		case usage.UsedPercent >= 85:
+		case usage.UsedPercent >= warnPercent:
 			warnCount++
 		}
 	}

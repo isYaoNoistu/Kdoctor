@@ -3,6 +3,7 @@ package kafka
 import (
 	"context"
 	"errors"
+	"time"
 
 	"kdoctor/internal/config"
 	"kdoctor/internal/snapshot"
@@ -28,6 +29,7 @@ func (Collector) Collect(_ context.Context, env *config.Runtime, network *snapsh
 		return nil, nil, errors.New("no bootstrap brokers configured")
 	}
 
+	startedAt := time.Now()
 	meta, err := kafkatransport.FetchMetadata(brokers, env.MetadataTimeout)
 	if err != nil {
 		return nil, nil, err
@@ -38,6 +40,7 @@ func (Collector) Collect(_ context.Context, env *config.Runtime, network *snapsh
 		ControllerID:        meta.ControllerID,
 		ControllerAddress:   meta.ControllerAddress,
 		ExpectedBrokerCount: env.SelectedProfile.BrokerCount,
+		MetadataDurationMs:  time.Since(startedAt).Milliseconds(),
 	}
 	for _, broker := range meta.Brokers {
 		kafkaSnap.Brokers = append(kafkaSnap.Brokers, snapshot.BrokerSnapshot{

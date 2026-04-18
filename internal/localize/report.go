@@ -256,6 +256,83 @@ var exactText = map[string]string{
 	"ensure producer ack expectations match the strict ISR policy":                                            "确认生产者 ack 预期与严格 ISR 策略相匹配",
 }
 
+var v2ExtraText = map[string]string{
+	"compose Kafka services are not available for runtime mount validation":                                       "当前没有可用的 compose Kafka 服务，无法校验运行时挂载预期",
+	"docker inspect mounts match the expected Kafka storage paths":                                                "docker inspect 挂载结果与预期 Kafka 存储路径一致",
+	"some Kafka storage paths are not mounted in the current docker runtime view":                                 "当前 docker 运行时视图下，部分 Kafka 存储路径没有正确挂载",
+	"Kafka storage mounts exist but part of the runtime mount set is read-only or unusual":                        "Kafka 存储挂载已存在，但部分运行时挂载为只读或状态异常",
+	"replica lag metrics are not available in the current JMX sources":                                            "当前 JMX 来源里没有可用的副本 lag 指标",
+	"replica fetcher lag metrics look healthy in the current JMX window":                                          "当前 JMX 窗口内副本抓取 lag 指标正常",
+	"replica fetcher lag is elevated and may soon erode ISR safety":                                               "副本抓取 lag 已升高，可能很快侵蚀 ISR 安全边界",
+	"network idle metrics are not available in the current JMX sources":                                           "当前 JMX 来源里没有可用的网络 idle 指标",
+	"network idle metrics still show healthy headroom":                                                            "网络 idle 指标仍显示有健康余量",
+	"network idle metrics are critically low and already suggest broker-side saturation":                          "网络 idle 指标已降到危险水平，说明 broker 侧可能已接近饱和",
+	"network idle metrics are getting low and broker network headroom is shrinking":                               "网络 idle 指标正在走低，broker 网络余量正在缩小",
+	"request handler idle metrics are not available in the current JMX sources":                                   "当前 JMX 来源里没有可用的请求处理线程 idle 指标",
+	"request handler idle metrics still show healthy processing headroom":                                         "请求处理线程 idle 指标仍显示有健康处理余量",
+	"request handler idle metrics are critically low and broker request threads are close to saturation":          "请求处理线程 idle 指标已降到危险水平，broker 请求线程接近饱和",
+	"request handler idle metrics are getting low and broker processing headroom is shrinking":                    "请求处理线程 idle 指标正在走低，broker 处理余量正在缩小",
+	"host disk and inode evidence is not available in the current input mode":                                     "当前输入模式下没有可用的宿主机磁盘与 inode 证据",
+	"host disk and inode headroom for Kafka paths looks acceptable":                                               "Kafka 宿主机路径的磁盘与 inode 余量看起来仍然可接受",
+	"some Kafka host paths are critically close to disk exhaustion":                                               "部分 Kafka 宿主机路径已非常接近磁盘耗尽",
+	"host disk or inode headroom for Kafka paths is getting tight":                                                "Kafka 宿主机路径的磁盘或 inode 余量开始变紧",
+	"compare docker inspect mounts with compose volume declarations":                                              "对照 docker inspect 挂载结果与 compose volume 声明",
+	"bind-mount Kafka data and metadata directories explicitly":                                                   "为 Kafka 数据目录和 metadata 目录显式配置 bind mount",
+	"avoid leaving Kafka state only inside container layers":                                                      "避免只把 Kafka 状态保存在容器层内",
+	"confirm Kafka data and metadata directories are mounted read-write":                                          "确认 Kafka 数据目录和 metadata 目录都是读写挂载",
+	"check whether the current container mount policy matches the intended persistence design":                    "确认当前容器挂载策略与预期持久化设计一致",
+	"review recent container recreation or host-path changes":                                                     "检查最近是否发生过容器重建或宿主机路径变更",
+	"check follower broker disk and network pressure":                                                             "检查 follower broker 的磁盘与网络压力",
+	"correlate replica lag with ISR and under-replicated partition signals":                                       "结合 ISR 与 UnderReplicatedPartitions 信号一起判断副本 lag",
+	"review whether the current write burst is outrunning replica catch-up capacity":                              "检查当前写入突发是否已经超过副本追赶能力",
+	"check connection churn and listener traffic concentration":                                                   "检查连接抖动和 listener 流量是否过度集中",
+	"correlate network idle with request latency and quota/backpressure signals":                                  "结合网络 idle、请求延迟和 quota/backpressure 信号一起判断",
+	"verify the current route design is not funneling all traffic through a hot broker":                           "确认当前路由设计没有把流量集中打到单个热点 broker",
+	"watch network idle over a longer window":                                                                     "在更长时间窗口内持续观察 network idle",
+	"check whether the current traffic spike or client fan-out is sustainable":                                    "检查当前流量高峰或客户端扇出是否可持续",
+	"review listener routing and load distribution before pressure worsens":                                       "在压力进一步恶化前复核 listener 路由和负载分布",
+	"correlate request idle with queue time, purgatory, and replica pressure":                                     "结合队列时间、purgatory 和副本压力一起判断 request idle",
+	"check whether recent traffic or rebalance storms are saturating broker handlers":                             "检查最近的流量高峰或 rebalance 风暴是否压满了 broker 处理线程",
+	"review disk, ISR, and GC pressure before scaling or rerouting traffic":                                       "在扩容或重分流前先复核磁盘、ISR 和 GC 压力",
+	"watch request idle over the next peak window":                                                                "在下一个高峰窗口继续观察 request idle",
+	"correlate handler idle with request latency and quota pressure":                                              "结合处理线程 idle、请求延迟和 quota 压力一起判断",
+	"review whether hot partitions or hot brokers are concentrating request load":                                 "检查是否有热点分区或热点 broker 正在集中承载请求",
+	"free disk space immediately on the affected host path":                                                       "立即释放受影响宿主机路径的磁盘空间",
+	"review inode and retention growth before the next write peak":                                                "在下一次写入高峰前复核 inode 与保留策略增长情况",
+	"check whether the host-level mount or filesystem is already impairing broker writes":                         "检查宿主机挂载点或文件系统是否已经影响 broker 写入",
+	"plan host-level cleanup or capacity expansion":                                                               "规划宿主机层面的清理或容量扩展",
+	"review inode usage on Kafka data and metadata directories":                                                   "复核 Kafka 数据目录与 metadata 目录的 inode 使用情况",
+	"track which broker path is growing fastest before it becomes a write outage":                                 "找出增长最快的 broker 路径，提前处理避免变成写入故障",
+	"network snapshot is not available":                                                                           "当前没有可用的网络快照",
+	"no hostname-based endpoints are available for DNS drift analysis":                                            "当前没有基于主机名的端点，无法评估 DNS 漂移",
+	"hostname resolution is broadly consistent with the current Kafka route view":                                 "主机名解析结果与当前 Kafka 路由视图基本一致",
+	"DNS resolution differs from the current metadata route view and may indicate stale records or split routing": "DNS 解析结果与当前 metadata 路由视图不一致，可能存在旧记录或分流路由问题",
+	"some Kafka hostnames resolve to multiple addresses; verify that all returned routes are intentional":         "部分 Kafka 主机名解析到多个地址，请确认这些返回路由都是有意设计的",
+	"controller quorum majority evidence is healthy":                                                              "controller quorum 的多数派证据正常",
+	"controller quorum does not currently have majority evidence":                                                 "controller quorum 当前缺少多数派证据",
+	"different JMX endpoints report different controller epoch or leader values":                                  "不同 JMX 端点报告了不一致的 controller epoch 或 leader 值",
+	"controller epoch and leader view are stable across the current JMX endpoints":                                "当前各个 JMX 端点的 controller epoch 与 leader 视图一致",
+	"some SSL listeners failed certificate validation, SAN matching, or expiry checks":                            "部分 SSL listener 的证书校验、SAN 匹配或到期检查失败",
+	"TLS certificate chain and expiry look healthy for the current listener set":                                  "当前 listener 集合的 TLS 证书链与到期时间正常",
+	"some SSL listener certificates are approaching expiry":                                                       "部分 SSL listener 证书即将过期",
+	"producer throttle time is above zero and may already be affecting write latency":                             "producer throttle time 已大于 0，可能已经影响写入延迟",
+	"produce throttle time is above zero and may already be limiting write throughput":                            "produce throttle time 已大于 0，可能已经限制写入吞吐",
+	"fetch throttle time is above zero and may already be slowing consumers":                                      "fetch throttle time 已大于 0，可能已经拖慢消费端",
+	"request percentage quota is saturated and may already be throttling client requests":                         "request percentage quota 已接近或达到饱和，可能已经在限流客户端请求",
+	"request percentage quota usage is close to saturation":                                                       "request percentage quota 使用率接近饱和",
+	"broker idle headroom or request latency already suggests backpressure":                                       "broker 空闲余量或请求延迟已经显示出背压迹象",
+	"request latency or purgatory backlog is elevated and may already be contributing to broker pressure":         "请求延迟或 purgatory 堆积升高，可能已经造成 broker 压力",
+	"heap usage or GC pause metrics indicate rising JVM pressure":                                                 "heap 使用率或 GC pause 指标显示 JVM 压力正在上升",
+	"host file descriptor headroom is critically low":                                                             "宿主机文件描述符余量已经非常紧张",
+	"host file descriptor headroom is getting tight":                                                              "宿主机文件描述符余量开始变紧",
+	"clock skew between hosts is larger than expected and can affect SSL, logs, and transaction timing":           "主机之间的时钟偏移大于预期，可能影响 SSL、日志时序与事务时间",
+	"some expected Kafka listener ports are missing from the host listening table":                                "部分预期 Kafka listener 端口未出现在宿主机监听表中",
+	"host memory pressure is high and may amplify JVM or container instability":                                   "宿主机内存压力较高，可能放大 JVM 或容器不稳定问题",
+	"at least one Kafka storage path is critically close to disk exhaustion":                                      "至少有一个 Kafka 存储路径已经非常接近磁盘耗尽",
+	"Kafka storage headroom is getting tight on disk space or inodes":                                             "Kafka 存储在磁盘空间或 inode 上的余量开始变紧",
+	"transaction logs already show commit, abort, or coordinator-side transaction errors":                         "当前日志已经出现事务提交、中止或协调器侧事务错误",
+}
+
 var fragmentReplacer = strings.NewReplacer(
 	"failure_stage=metadata", "失败阶段=metadata",
 	"failure_stage=produce", "失败阶段=生产",
@@ -366,9 +443,17 @@ func TranslateText(input string) string {
 	if translated, ok := exactText[input]; ok {
 		return translated
 	}
+	if translated, ok := v2ExtraText[input]; ok {
+		return translated
+	}
 
 	output := fragmentReplacer.Replace(input)
 	for oldValue, newValue := range exactText {
+		if strings.Contains(output, oldValue) {
+			output = strings.ReplaceAll(output, oldValue, newValue)
+		}
+	}
+	for oldValue, newValue := range v2ExtraText {
 		if strings.Contains(output, oldValue) {
 			output = strings.ReplaceAll(output, oldValue, newValue)
 		}
@@ -394,6 +479,9 @@ func TranslateMode(mode string) string {
 }
 
 func TranslateModule(module string) string {
+	if module == "quota" {
+		return "閰嶉"
+	}
 	switch module {
 	case "network":
 		return "网络"
@@ -415,6 +503,22 @@ func TranslateModule(module string) string {
 		return "Docker"
 	case "capacity":
 		return "容量"
+	case "consumer":
+		return "消费组"
+	case "security":
+		return "安全"
+	case "storage":
+		return "存储"
+	case "metrics":
+		return "指标"
+	case "jvm":
+		return "JVM"
+	case "producer":
+		return "生产者"
+	case "transaction":
+		return "事务"
+	case "upgrade":
+		return "升级"
 	default:
 		return module
 	}

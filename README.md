@@ -18,17 +18,17 @@
 - 日志检查现在会显式给出每个来源的行数、字节数、最新时间、新鲜度和样本是否充足，不再把“采集成功”直接等价成“日志健康”。
 - 支持 `logs.custom_patterns_dir` 自定义日志指纹规则，可在内置规则之外追加团队自己的错误模式。
 
-## 当前 V1 能力
+## 当前 V2 能力
 
-- 网络：`NET-001~004`
-- Kafka 元数据：`KFK-001~004`
-- KRaft：`KRF-001~003`
-- Topic/Replica：`TOP-003~005`
+- 网络：`NET-001~009`
+- Kafka 元数据与拓扑：`KFK-001~009`
+- KRaft：`KRF-001~008`
+- Topic/Replica：`TOP-003~011`
 - Client Probe：`CLI-001~005`
-- Config Lint：`CFG-001~008`
-- Host：`HOST-004`、`HOST-006`
-- Docker：`DKR-001~004`
-- Logs：`LOG-001~004`
+- Config Lint：`CFG-001~014`
+- Producer / Consumer / Transaction：`PRD-001~006`、`CSM-001~006`、`TXN-001~005`
+- Security / Storage / Quota / JVM：`SEC-001~005`、`STG-001~006`、`QTA-001~004`、`JVM-001~004`
+- Host / Docker / Logs / Upgrade：`HOST-004`、`HOST-006~011`、`DKR-001~007`、`LOG-001~008`、`UPG-001~003`
 
 ## 输入模式
 
