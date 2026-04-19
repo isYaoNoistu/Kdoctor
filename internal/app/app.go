@@ -33,6 +33,7 @@ type Options struct {
 	LogDir             string
 	Timeout            string
 	Severity           string
+	Verbose            bool
 }
 
 type App struct {
@@ -85,9 +86,19 @@ func (a *App) render(report model.Report) ([]byte, error) {
 	case "json":
 		return jsonoutput.Renderer{}.Render(report)
 	case "markdown", "md":
-		return markdownoutput.Renderer{}.Render(report)
+		return markdownoutput.Renderer{
+			MaxEvidenceItems: a.env.OutputMaxEvidenceItems,
+			ShowPassChecks:   a.env.OutputShowPassChecks,
+			ShowSkipChecks:   a.env.OutputShowSkipChecks,
+			Verbose:          a.env.OutputVerbose,
+		}.Render(report)
 	default:
-		return terminal.Renderer{}.Render(report)
+		return terminal.Renderer{
+			MaxEvidenceItems: a.env.OutputMaxEvidenceItems,
+			ShowPassChecks:   a.env.OutputShowPassChecks,
+			ShowSkipChecks:   a.env.OutputShowSkipChecks,
+			Verbose:          a.env.OutputVerbose,
+		}.Render(report)
 	}
 }
 

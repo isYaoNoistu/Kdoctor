@@ -115,6 +115,9 @@ func Validate(cfg Config) error {
 	if cfg.Diagnosis.MaxRootCauses < 0 {
 		return fmt.Errorf("diagnosis.max_root_causes must be greater than or equal to 0")
 	}
+	if cfg.Output.MaxEvidenceItems < 0 {
+		return fmt.Errorf("output.max_evidence_items must be greater than or equal to 0")
+	}
 	return nil
 }
 

@@ -41,13 +41,13 @@ func TestRootCauseDiagnosePrefersMetadataEndpointRootCause(t *testing.T) {
 		t.Fatalf("expected metadata endpoint root cause first, got %q", report.Summary.RootCauses[0])
 	}
 	if !strings.Contains(report.Summary.RootCauses[0], "反证/局限") {
-		t.Fatalf("expected counter-evidence to be included, got %q", report.Summary.RootCauses[0])
+		t.Fatalf("expected limitations to be included, got %q", report.Summary.RootCauses[0])
 	}
 }
 
 func TestIncidentSummarizeOverridesOverviewInIncidentMode(t *testing.T) {
 	report := model.NewReport(model.ModeIncident, "generic-bootstrap", time.Now())
-	report.Summary.RootCauses = []string{"高置信度主因：metadata 返回的 broker 地址对当前客户端不可达。"}
+	report.Summary.RootCauses = []string{"最可能主因：metadata 返回的 broker 地址对当前客户端不可达。"}
 	report.Summary.RecommendedActions = []string{"优先核对 advertised.listeners。"}
 
 	Incident{}.Summarize(&report)

@@ -4,177 +4,98 @@
 
 它的目标不是替代 Kafka 管理平台，而是在你手里只有一个 `bootstrap` 地址，或者额外还能拿到 `profile`、`compose`、日志目录、Docker 运行时信息时，尽快判断问题更像是网络、`advertised.listeners`、KRaft、Topic/ISR、客户端链路，还是宿主机、容器和日志层。
 
-详细使用手册见 [USER_GUIDE.md](./USER_GUIDE.md)。
-手册已经区分 `Windows` / `Linux` 两套命令和路径写法，可直接按系统照抄。
+详细使用手册见 [USER_GUIDE.md](./USER_GUIDE.md)。  
+手册已区分 `Windows` / `Linux` 两套命令和路径写法，可直接照抄使用。
 
-## 作用
+## 工具定位
 
-- 支持最小输入模式：只给 `bootstrap` 也能执行网络、metadata、topic、probe 检查。
-- 支持增强输入模式：附加 `profile`、`compose`、日志目录后，可补充配置校验、KRaft 对照、宿主机、容器、日志指纹检查。
+- 只给一个 `bootstrap` 地址，也能执行最小可用巡检。
+- 补充 `profile`、`compose`、日志目录、Docker 信息后，会增强规则和证据，但不会改写主流程。
 - 默认输出中文终端报告，也支持 `json` 和 `markdown`。
-- 面向“现场可用性”和“误报控制”，缺少上下文时优先 `SKIP` 或降级，而不是机械报错。
-- `probe` 会优先检查 `_kdoctor_probe` 是否可用；主题不存在时会尝试自动创建，避免 fresh cluster 被误判成链路故障。
-- `probe` 结果已按阶段收口：上游阶段失败时，下游未执行项会标记为 `SKIP`，不会再把一处失败扩散成多条重复 `FAIL`。
-- 日志检查现在会显式给出每个来源的行数、字节数、最新时间、新鲜度和样本是否充足，不再把“采集成功”直接等价成“日志健康”。
-- 支持 `logs.custom_patterns_dir` 自定义日志指纹规则，可在内置规则之外追加团队自己的错误模式。
+- 默认终端只展开 `CRIT / FAIL / WARN / ERROR`，`PASS / SKIP` 默认折叠，方便值班人员快速扫读。
+- 报告会优先给出 `主因判断 + 建议动作`，而不是把所有检查项平铺给人看。
 
-## 当前 V2 能力
+## 当前封版能力
 
 - 网络：`NET-001~009`
 - Kafka 元数据与拓扑：`KFK-001~009`
-- KRaft：`KRF-001~008`
-- Topic/Replica：`TOP-003~011`
+- KRaft：`KRF-001~005`
+- Topic / ISR / 规划：`TOP-003~009`、`TOP-011`
 - Client Probe：`CLI-001~005`
 - Config Lint：`CFG-001~014`
-- Producer / Consumer / Transaction：`PRD-001~006`、`CSM-001~006`、`TXN-001~005`
-- Security / Storage / Quota / JVM：`SEC-001~005`、`STG-001~006`、`QTA-001~004`、`JVM-001~004`
-- Host / Docker / Logs / Upgrade：`HOST-004`、`HOST-006~011`、`DKR-001~007`、`LOG-001~008`、`UPG-001~003`
+- Producer / Consumer / Transaction 上下文：`PRD-001~004`、`PRD-006`、`CSM-001~006`、`TXN-001~005`
+- Security / Storage / Host / Docker / Logs：`SEC-001~005`、`STG-001`、`STG-003`、`STG-005~006`、`HOST-004`、`HOST-007~011`、`DKR-001~007`、`LOG-001~008`
 
-## 输入模式
+以下内容已从封版默认能力中移除：
 
-### 1. `bootstrap-only`
+- JMX / Metrics / JVM / Quota 相关检查
+- 依赖 JMX 的 Host / KRaft 路径
+- 默认报告中的 JMX 噪声和相关 `SKIP`
 
-这是最小可用模式，也是工具默认应该支持的模式。
+## 最常用命令
 
-```powershell
-go run ./cmd/kdoctor probe --bootstrap 192.168.1.1:9192
-```
-
-### 2. `bootstrap + profile`
-
-在只有地址的基础上补充环境预期值，例如 broker 数量、controller 端点、min ISR 等。
+Windows：
 
 ```powershell
-go run ./cmd/kdoctor probe --bootstrap 192.168.1.1:9192 --profile generic-bootstrap
+.\kdoctor.exe probe --bootstrap 192.168.1.1:9192
+.\kdoctor.exe probe --config .\kdoctor.yaml
+.\kdoctor.exe probe --config .\kdoctor.yaml --compose .\docker-compose.yml
+.\kdoctor.exe probe --bootstrap 192.168.1.1:9192 --format markdown --output .\report.md
 ```
 
-### 3. `bootstrap + compose`
+Linux：
 
-在前两者基础上增加静态配置 lint 和部署侧对照检查。
-
-```powershell
-go run ./cmd/kdoctor probe --bootstrap 192.168.1.1:9192 --compose .\docker-compose.yml
+```bash
+./kdoctor probe --bootstrap 192.168.1.1:9192
+./kdoctor probe --config ./kdoctor.yaml
+./kdoctor probe --config ./kdoctor.yaml --compose ./docker-compose.yml
+./kdoctor probe --bootstrap 192.168.1.1:9192 --format markdown --output ./report.md
 ```
 
-### 4. `bootstrap + 输出文件`
+## 输出说明
 
-支持 JSON 和 Markdown 两种文件输出。
+- 默认终端报告：压缩版，只展开重点问题。
+- `--verbose`：展开 `PASS / SKIP` 明细。
+- `--json`：适合脚本或自动化处理。
+- `--format markdown`：适合留档、发群、贴工单。
 
-```powershell
-go run ./cmd/kdoctor probe --bootstrap 192.168.1.1:9192 --json
-go run ./cmd/kdoctor probe --bootstrap 192.168.1.1:9192 --format markdown --output .\report.md
-```
+默认输出行为：
 
-## 运行模式
-
-- `quick`：快速巡检，优先给出核心健康结论。
-- `probe`：执行真实 client probe，是当前最常用模式。
-- `lint`：偏静态配置与部署校验。
-- `full`：尽量执行完整检查。
-- `incident`：面向故障现场，输出更聚焦的摘要。
+- `output.max_evidence_items=8`
+- `output.show_pass_checks=false`
+- `output.show_skip_checks=false`
+- `output.verbose=false`
 
 ## 构建
 
-在项目根目录执行：
+在仓库根目录执行：
 
 ```powershell
 go test ./...
 .\scripts\build.ps1
-```
-
-默认产物在：
-
-```text
-dist/kdoctor-windows-amd64.exe
-```
-
-如需交叉编译：
-
-```powershell
 .\scripts\build.ps1 -GOOS linux -GOARCH amd64
 ```
 
-## 使用示例
-
-### 1. 直接使用源码运行
-
-```powershell
-go run ./cmd/kdoctor probe --bootstrap 192.168.1.1:9192
-```
-
-### 2. 输出 JSON
-
-```powershell
-go run ./cmd/kdoctor probe --bootstrap 192.168.1.1:9192 --json
-```
-
-### 3. 输出 Markdown 报告
-
-```powershell
-go run ./cmd/kdoctor probe --bootstrap 192.168.1.1:9192 --format markdown --output .\report.md
-```
-
-### 4. 使用已构建二进制
-
-```powershell
-.\dist\kdoctor-windows-amd64.exe probe --bootstrap 192.168.1.1:9192
-```
-
-## 输出与退出码
-
-- 默认输出：中文终端报告
-- `--json`：机器可读 JSON
-- `--format markdown`：便于发群、贴工单、留档
-
-`probe` 模式下的结果语义：
-
-- `CLI-001` 对应 `bootstrap -> metadata`
-- `CLI-002` 对应 `produce`
-- `CLI-003` 对应 `consume`
-- `CLI-004` 对应 `commit`
-- `CLI-005` 对应整条端到端链路
-
-如果某个上游阶段已经失败，后续未执行阶段会显示为 `SKIP`，并附带失败阶段说明。
-
-日志相关配置里，当前最值得关注的是：
-
-- `logs.min_lines_per_source`
-- `logs.freshness_window`
-- `logs.max_files`
-- `logs.max_bytes_per_source`
-- `logs.custom_patterns_dir`
-- `diagnosis.max_root_causes`
-
-退出码约定：
-
-- `0`：最高状态为 `PASS`
-- `1`：最高状态为 `WARN`
-- `2`：最高状态为 `FAIL`
-- `3`：最高状态为 `CRIT`
-- `5`：最高状态为 `ERROR`
-- `6`：最高状态为 `TIMEOUT`
-
-参数解析或配置初始化失败时，CLI 直接以错误码退出。
+构建产物默认输出到工作区根目录的 `dist/`，不放在代码仓库目录里。
 
 ## 目录
 
 ```text
-kdoctor/
+Kdoctor/
   cmd/kdoctor/           CLI 入口
   internal/              内部实现
   pkg/model/             统一报告模型
-  dist/                  二进制输出目录
   scripts/build.ps1      构建脚本
   kdoctor.example.yaml   示例配置
+  kdoctor.yaml           常用环境配置
+  USER_GUIDE.md          详细用户手册
   architecture.md        架构与工程标准
   doc.md                 设计文档
-  version/               阶段记录
+  version/               版本阶段记录
 ```
 
 ## 说明
 
-- `compose`、Docker、日志目录都不是前置条件；没有这些输入时，相关检查会合理 `SKIP`。
-- `dist/` 只放构建产物，不放源码。
-- 当前默认输出已经是中文，适合直接做初步人工排障。
+- `compose`、Docker、日志目录都不是前置条件；没有这些输入时，相关检查不会再在默认报告里制造噪声。
+- 终端、Markdown、JSON 三种输出已经统一了中文术语、证据顺序和问题排序。
 - 设计说明见 [doc.md](./doc.md)，工程标准见 [architecture.md](./architecture.md)。
-

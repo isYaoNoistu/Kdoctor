@@ -82,6 +82,7 @@ func Bootstrap(opts Options) (*config.Runtime, error) {
 	logCustomPatternsDir := config.NormalizeInputPath(cfg.Logs.CustomPatternsDir)
 
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	outputVerbose := cfg.Output.Verbose || opts.Verbose
 
 	return &config.Runtime{
 		Mode:                      opts.Mode,
@@ -117,6 +118,10 @@ func Bootstrap(opts Options) (*config.Runtime, error) {
 		DiagnosisMaxRootCauses:    cfg.Diagnosis.MaxRootCauses,
 		DiagnosisEnableConfidence: cfg.Diagnosis.EnableConfidence,
 		MinimumOutputSeverity:     opts.Severity,
+		OutputMaxEvidenceItems:    cfg.Output.MaxEvidenceItems,
+		OutputShowPassChecks:      cfg.Output.ShowPassChecks,
+		OutputShowSkipChecks:      cfg.Output.ShowSkipChecks,
+		OutputVerbose:             outputVerbose,
 		Logger:                    logger,
 	}, nil
 }

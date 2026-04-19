@@ -58,6 +58,7 @@ func parseFlags(args []string) (app.Options, error) {
 	fs.StringVar(&opts.LogDir, "log-dir", "", "Kafka 日志目录")
 	fs.StringVar(&opts.Timeout, "timeout", "", "整体超时时间，例如 30s")
 	fs.StringVar(&opts.Severity, "severity", "", "最小输出严重级别")
+	fs.BoolVar(&opts.Verbose, "verbose", false, "展开 PASS/SKIP 明细与完整附录")
 	if err := fs.Parse(args); err != nil {
 		return app.Options{}, err
 	}

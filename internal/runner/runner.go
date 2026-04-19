@@ -69,80 +69,131 @@ func isDegradedTaskMessage(message string) bool {
 
 func summarizeCoverage(env *config.Runtime, bundle *snapshot.Bundle) []string {
 	coverage := make([]string, 0, 8)
-	coverage = append(coverage, fmt.Sprintf("网络=%s", snapshotState(bundle != nil && bundle.Network != nil, "已采集", "缺失")))
-	coverage = append(coverage, summarizeComposeCoverage(env, bundle))
-	coverage = append(coverage, fmt.Sprintf("Kafka=%s", snapshotState(bundle != nil && bundle.Kafka != nil, "已采集", "缺失")))
-	coverage = append(coverage, summarizeJMXCoverage(env, bundle))
-	coverage = append(coverage, summarizeGroupCoverage(env, bundle))
-	coverage = append(coverage, summarizeDockerCoverage(env, bundle))
-	coverage = append(coverage, summarizeHostCoverage(env, bundle))
-	coverage = append(coverage, summarizeLogCoverage(env, bundle))
-	coverage = append(coverage, summarizeProbeCoverage(env, bundle))
+	coverage = append(coverage, describeCoverage("网络", networkEnabled(env), networkEvidence(bundle)))
+	coverage = append(coverage, describeCoverage("Compose", composeEnabled(env), composeEvidence(bundle)))
+	coverage = append(coverage, describeCoverage("Kafka", kafkaEnabled(env), kafkaEvidence(bundle)))
+	coverage = append(coverage, describeCoverage("消费组", groupEnabled(env), groupEvidence(bundle)))
+	coverage = append(coverage, describeCoverage("Docker", dockerEnabled(env, bundle), dockerEvidence(bundle)))
+	coverage = append(coverage, describeCoverage("宿主机", hostEnabled(env, bundle), hostEvidence(bundle)))
+	coverage = append(coverage, describeCoverage("日志", logEnabled(env, bundle), logEvidence(bundle)))
+	coverage = append(coverage, describeCoverage("探针", probeEnabled(env), probeEvidence(env, bundle)))
 	return coverage
 }
 
-func summarizeComposeCoverage(env *config.Runtime, bundle *snapshot.Bundle) string {
-	if strings.TrimSpace(env.ComposePath) == "" {
-		return "Compose=未提供"
+func describeCoverage(name string, enabled bool, hasEvidence bool) string {
+	switch {
+	case !enabled:
+		return fmt.Sprintf("%s=未纳入本次运行", name)
+	case hasEvidence:
+		return fmt.Sprintf("%s=已启用，已获取证据", name)
+	default:
+		return fmt.Sprintf("%s=已启用，未获取证据", name)
 	}
-	return fmt.Sprintf("Compose=%s", snapshotState(bundle != nil && bundle.Compose != nil, "已采集", "缺失或解析失败"))
 }
 
-func summarizeGroupCoverage(env *config.Runtime, bundle *snapshot.Bundle) string {
-	if len(env.SelectedProfile.GroupProbeTargets) == 0 {
-		return "消费组=未配置"
-	}
-	if bundle == nil || bundle.Group == nil {
-		return "消费组=缺失"
-	}
-	return fmt.Sprintf("消费组=已采集(%d组)", len(bundle.Group.Targets))
+func networkEnabled(env *config.Runtime) bool {
+	return env != nil && (len(env.BootstrapExternal) > 0 || len(env.BootstrapInternal) > 0 || len(env.ControllerEndpoints) > 0)
 }
 
-func summarizeJMXCoverage(env *config.Runtime, bundle *snapshot.Bundle) string {
-	if !env.EnableJMX {
-		return "JMX=未启用"
+func networkEvidence(bundle *snapshot.Bundle) bool {
+	if bundle == nil || bundle.Network == nil {
+		return false
 	}
-	if bundle == nil || bundle.Metrics == nil {
-		return "JMX=缺失"
-	}
-	if bundle.Metrics.Available {
-		return fmt.Sprintf("JMX=已采集(%d个端点)", len(bundle.Metrics.Endpoints))
-	}
-	return "JMX=未采到可用指标"
+	return len(bundle.Network.BootstrapChecks) > 0 || len(bundle.Network.ControllerChecks) > 0 || len(bundle.Network.MetadataChecks) > 0
 }
 
-func summarizeDockerCoverage(env *config.Runtime, bundle *snapshot.Bundle) string {
-	if !env.EnableDocker {
-		return "Docker=未启用"
-	}
-	return fmt.Sprintf("Docker=%s", snapshotState(bundle != nil && bundle.Docker != nil, "已采集", "缺失"))
+func composeEnabled(env *config.Runtime) bool {
+	return env != nil && strings.TrimSpace(env.ComposePath) != ""
 }
 
-func summarizeHostCoverage(env *config.Runtime, bundle *snapshot.Bundle) string {
-	if !env.EnableHost {
-		return "宿主机=未启用"
-	}
-	return fmt.Sprintf("宿主机=%s", snapshotState(bundle != nil && bundle.Host != nil, "已采集", "缺失"))
+func composeEvidence(bundle *snapshot.Bundle) bool {
+	return bundle != nil && bundle.Compose != nil && len(bundle.Compose.Services) > 0
 }
 
-func summarizeLogCoverage(env *config.Runtime, bundle *snapshot.Bundle) string {
-	if !env.Config.Logs.Enabled {
-		return "日志=未启用"
-	}
-	return fmt.Sprintf("日志=%s", snapshotState(bundle != nil && bundle.Logs != nil, "已采集", "缺失"))
+func kafkaEnabled(env *config.Runtime) bool {
+	return networkEnabled(env)
 }
 
-func summarizeProbeCoverage(env *config.Runtime, bundle *snapshot.Bundle) string {
-	if bundle == nil || bundle.Probe == nil {
-		return "探针=缺失"
+func kafkaEvidence(bundle *snapshot.Bundle) bool {
+	return bundle != nil && bundle.Kafka != nil && len(bundle.Kafka.Brokers) > 0
+}
+
+func groupEnabled(env *config.Runtime) bool {
+	return env != nil && len(env.SelectedProfile.GroupProbeTargets) > 0
+}
+
+func groupEvidence(bundle *snapshot.Bundle) bool {
+	return bundle != nil && bundle.Group != nil && (len(bundle.Group.Targets) > 0 || len(bundle.Group.Errors) > 0)
+}
+
+func dockerEnabled(env *config.Runtime, bundle *snapshot.Bundle) bool {
+	if env == nil || !env.EnableDocker {
+		return false
 	}
-	if bundle.Probe.Skipped {
-		return fmt.Sprintf("探针=跳过(%s)", bundle.Probe.Reason)
+	if len(env.Config.Docker.ContainerNames) > 0 {
+		return true
 	}
-	if !shouldRunProbeByMode(env.Mode, env.Config.Probe.Enabled) {
-		return "探针=未启用"
+	return composeEvidence(bundle)
+}
+
+func dockerEvidence(bundle *snapshot.Bundle) bool {
+	if bundle == nil || bundle.Docker == nil {
+		return false
 	}
-	return "探针=已执行"
+	return len(bundle.Docker.Containers) > 0 || len(bundle.Docker.Errors) > 0
+}
+
+func hostEnabled(env *config.Runtime, bundle *snapshot.Bundle) bool {
+	if env == nil || !env.EnableHost {
+		return false
+	}
+	if strings.TrimSpace(env.LogDir) != "" {
+		return true
+	}
+	if len(env.Config.Host.DiskPaths) > 0 || len(env.Config.Host.CheckPorts) > 0 {
+		return true
+	}
+	return composeEvidence(bundle) || dockerEvidence(bundle)
+}
+
+func hostEvidence(bundle *snapshot.Bundle) bool {
+	if bundle == nil || bundle.Host == nil {
+		return false
+	}
+	host := bundle.Host
+	return len(host.DiskUsages) > 0 ||
+		len(host.PortChecks) > 0 ||
+		len(host.ObservedListenPorts) > 0 ||
+		host.FD != nil ||
+		host.Memory != nil
+}
+
+func logEnabled(env *config.Runtime, bundle *snapshot.Bundle) bool {
+	if env == nil || !env.Config.Logs.Enabled {
+		return false
+	}
+	if strings.TrimSpace(env.LogDir) != "" {
+		return true
+	}
+	return dockerEnabled(env, bundle)
+}
+
+func logEvidence(bundle *snapshot.Bundle) bool {
+	if bundle == nil || bundle.Logs == nil {
+		return false
+	}
+	return len(bundle.Logs.Sources) > 0 || len(bundle.Logs.SourceStats) > 0 || len(bundle.Logs.Matches) > 0
+}
+
+func probeEnabled(env *config.Runtime) bool {
+	return env != nil && shouldRunProbeByMode(env.Mode, env.Config.Probe.Enabled)
+}
+
+func probeEvidence(env *config.Runtime, bundle *snapshot.Bundle) bool {
+	if !probeEnabled(env) || bundle == nil || bundle.Probe == nil {
+		return false
+	}
+	return true
 }
 
 func shouldRunProbeByMode(mode string, enabled bool) bool {
@@ -155,11 +206,4 @@ func shouldRunProbeByMode(mode string, enabled bool) bool {
 	default:
 		return false
 	}
-}
-
-func snapshotState(ok bool, yes string, no string) string {
-	if ok {
-		return yes
-	}
-	return no
 }

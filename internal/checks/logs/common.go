@@ -82,19 +82,20 @@ func appendSourceEvidence(result *model.CheckResult, logs *snapshot.LogSnapshot)
 		if stat.LastModifiedUnix > 0 {
 			lastTS = time.Unix(stat.LastModifiedUnix, 0).Format(time.RFC3339)
 		}
-		result.Evidence = append(result.Evidence,
-			fmt.Sprintf(
-				"日志来源=%s 类型=%s 行数=%d 字节=%d 最新时间=%s 新鲜=%t 样本充足=%t 空内容=%t",
-				stat.Source,
-				stat.Kind,
-				stat.Lines,
-				stat.Bytes,
-				lastTS,
-				stat.Fresh,
-				stat.SufficientLines,
-				stat.Empty,
-			),
-		)
+		freshness := "unknown"
+		if stat.LastModifiedUnix > 0 {
+			freshness = time.Since(time.Unix(stat.LastModifiedUnix, 0)).Round(time.Minute).String()
+		}
+		result.Evidence = append(result.Evidence, fmt.Sprintf(
+			"source=%s line_count=%d byte_count=%d latest_timestamp=%s freshness=%s sample_sufficient=%t empty=%t",
+			stat.Source,
+			stat.Lines,
+			stat.Bytes,
+			lastTS,
+			freshness,
+			stat.SufficientLines,
+			stat.Empty,
+		))
 	}
 	for _, warning := range logs.Warnings {
 		result.Evidence = append(result.Evidence, fmt.Sprintf("日志采集告警=%s", warning))
@@ -109,8 +110,8 @@ func appendSourceSummary(result *model.CheckResult, logs *snapshot.LogSnapshot) 
 		return
 	}
 	stale, sparse, empty := logSourceIssues(logs)
-	result.Evidence = append(result.Evidence, fmt.Sprintf("日志来源数=%d", len(logs.SourceStats)))
-	result.Evidence = append(result.Evidence, fmt.Sprintf("陈旧来源数=%d", stale))
-	result.Evidence = append(result.Evidence, fmt.Sprintf("样本不足来源数=%d", sparse))
-	result.Evidence = append(result.Evidence, fmt.Sprintf("空日志来源数=%d", empty))
+	result.Evidence = append(result.Evidence, fmt.Sprintf("source_count=%d", len(logs.SourceStats)))
+	result.Evidence = append(result.Evidence, fmt.Sprintf("stale_sources=%d", stale))
+	result.Evidence = append(result.Evidence, fmt.Sprintf("sparse_sources=%d", sparse))
+	result.Evidence = append(result.Evidence, fmt.Sprintf("empty_sources=%d", empty))
 }

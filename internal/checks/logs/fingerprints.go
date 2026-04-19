@@ -21,19 +21,19 @@ func (FingerprintChecker) Run(_ context.Context, bundle *snapshot.Bundle) model.
 		return rule.NewSkip("LOG-002", "error_fingerprints", "logs", "缺少日志来源，无法评估日志指纹")
 	}
 	if len(logs.Matches) == 0 {
-		result := rule.NewPass("LOG-002", "error_fingerprints", "logs", "近期日志未命中内置已知 Kafka 错误指纹")
-		result.Evidence = append(result.Evidence, fmt.Sprintf("内置指纹数=%d", logs.BuiltinPatternCount))
+		result := rule.NewPass("LOG-002", "error_fingerprints", "logs", "近期日志未命中已知错误指纹")
+		result.Evidence = append(result.Evidence, fmt.Sprintf("builtin_patterns=%d", logs.BuiltinPatternCount))
 		if logs.CustomPatternCount > 0 {
-			result.Evidence = append(result.Evidence, fmt.Sprintf("自定义指纹数=%d", logs.CustomPatternCount))
+			result.Evidence = append(result.Evidence, fmt.Sprintf("custom_patterns=%d", logs.CustomPatternCount))
 		}
 		appendSourceSummary(&result, logs)
 		return result
 	}
 
-	result := resultForMatchSeverity("LOG-002", "error_fingerprints", "近期日志命中了已知 Kafka 错误指纹", highestSeverity(logs.Matches))
-	result.Evidence = append(result.Evidence, fmt.Sprintf("内置指纹数=%d", logs.BuiltinPatternCount))
+	result := resultForMatchSeverity("LOG-002", "error_fingerprints", "近期日志命中了已知错误指纹", highestSeverity(logs.Matches))
+	result.Evidence = append(result.Evidence, fmt.Sprintf("builtin_patterns=%d", logs.BuiltinPatternCount))
 	if logs.CustomPatternCount > 0 {
-		result.Evidence = append(result.Evidence, fmt.Sprintf("自定义指纹数=%d", logs.CustomPatternCount))
+		result.Evidence = append(result.Evidence, fmt.Sprintf("custom_patterns=%d", logs.CustomPatternCount))
 	}
 	appendSourceSummary(&result, logs)
 	for _, match := range logs.Matches {

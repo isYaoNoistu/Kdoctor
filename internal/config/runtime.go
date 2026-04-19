@@ -39,5 +39,9 @@ type Runtime struct {
 	DiagnosisMaxRootCauses    int
 	DiagnosisEnableConfidence bool
 	MinimumOutputSeverity     string
+	OutputMaxEvidenceItems    int
+	OutputShowPassChecks      bool
+	OutputShowSkipChecks      bool
+	OutputVerbose             bool
 	Logger                    *slog.Logger
 }

@@ -28,11 +28,11 @@ func (SourcesChecker) Run(_ context.Context, bundle *snapshot.Bundle) model.Chec
 	stale, sparse, empty := logSourceIssues(logs)
 	switch {
 	case empty > 0 || stale > 0 || sparse > 0 || len(logs.Warnings) > 0:
-		result := rule.NewWarn("LOG-001", "log_sources", "logs", "日志已采集，但部分来源内容不足或不够新鲜，日志结论可信度受限")
+		result := rule.NewWarn("LOG-001", "log_sources", "logs", "日志来源已获取，但部分样本不足或不够新鲜，后续日志判断需要谨慎解释")
 		appendSourceEvidence(&result, logs)
 		return result
 	default:
-		result := rule.NewPass("LOG-001", "log_sources", "logs", "日志来源已采集，且样本足以支撑近期日志分析")
+		result := rule.NewPass("LOG-001", "log_sources", "logs", "日志来源与样本质量满足本次分析需要")
 		appendSourceEvidence(&result, logs)
 		return result
 	}

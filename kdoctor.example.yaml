@@ -1,4 +1,4 @@
-version: 2
+﻿version: 2
 
 default_profile: generic-bootstrap
 
@@ -125,10 +125,10 @@ docker:
 
 logs:
   enabled: true
-  tail_lines: 300
-  lookback_minutes: 15
+  tail_lines: 500
+  lookback_minutes: 30
   min_lines_per_source: 20
-  freshness_window: "15m"
+  freshness_window: "30m"
   max_files: 12
   max_bytes_per_source: 1048576
   custom_patterns_dir: ""
@@ -152,20 +152,6 @@ execution:
   metadata_timeout: "5s"
   tcp_timeout: "3s"
   admin_api_timeout: "15s"
-  jmx_timeout: "5s"
-
-jmx:
-  enabled: false
-  scrape_timeout: "5s"
-  path: "/metrics"
-  endpoints: []
-  metric_sets:
-    - "kraft"
-    - "broker"
-    - "replica"
-    - "request"
-    - "quota"
-    - "jvm"
 
 host:
   enabled: true
@@ -173,13 +159,10 @@ host:
   check_ports: []
   fd_warn_pct: 70
   fd_crit_pct: 85
-  clock_skew_warn_ms: 500
 
 thresholds:
   urp_warn: 1
   under_min_isr_crit: 1
-  network_idle_warn: 0.3
-  request_idle_warn: 0.3
   disk_warn_pct: 75
   disk_crit_pct: 85
   inode_warn_pct: 80
@@ -188,12 +171,6 @@ thresholds:
   consumer_lag_warn: 1000
   consumer_lag_crit: 10000
   cert_expiry_warn_days: 30
-  produce_throttle_warn_ms: 1
-  fetch_throttle_warn_ms: 1
-  request_latency_warn_ms: 100
-  purgatory_warn_count: 1
-  heap_used_warn_pct: 85
-  gc_pause_warn_ms: 200
 
 diagnosis:
   max_root_causes: 3
@@ -201,3 +178,9 @@ diagnosis:
   suppress_downstream_symptoms: true
   rule_packs:
     - "builtin"
+
+output:
+  max_evidence_items: 8
+  show_pass_checks: false
+  show_skip_checks: false
+  verbose: false

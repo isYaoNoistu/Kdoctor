@@ -43,7 +43,7 @@ func TestFingerprintCheckerUsesCautiousPassWordingWhenNoMatches(t *testing.T) {
 	if result.Status != model.StatusPass {
 		t.Fatalf("expected PASS, got %s", result.Status)
 	}
-	if result.Summary != "近期日志未命中内置已知 Kafka 错误指纹" {
+	if result.Summary != "近期日志未命中已知错误指纹" {
 		t.Fatalf("unexpected summary: %q", result.Summary)
 	}
 }

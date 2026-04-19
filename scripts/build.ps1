@@ -6,21 +6,40 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$distDir = Join-Path $repoRoot "dist"
+$workspaceRoot = Split-Path -Parent $repoRoot
+$distDir = Join-Path $workspaceRoot "dist"
 if (-not (Test-Path $distDir)) {
     New-Item -ItemType Directory -Path $distDir | Out-Null
 }
 
-$binaryName = "kdoctor-$GOOS-$GOARCH"
+$rawDir = Join-Path $distDir "raw"
+$targetDir = Join-Path $rawDir "$GOOS-$GOARCH"
+if (-not (Test-Path $targetDir)) {
+    New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+}
+
+$cacheRoot = Join-Path $distDir ".build-cache"
+$goCacheDir = Join-Path $cacheRoot "gocache"
+$goTmpDir = Join-Path $cacheRoot "gotmp"
+if (-not (Test-Path $goCacheDir)) {
+    New-Item -ItemType Directory -Path $goCacheDir -Force | Out-Null
+}
+if (-not (Test-Path $goTmpDir)) {
+    New-Item -ItemType Directory -Path $goTmpDir -Force | Out-Null
+}
+
+$binaryName = "kdoctor"
 if ($GOOS -eq "windows") {
     $binaryName += ".exe"
 }
-$output = Join-Path $distDir $binaryName
+$output = Join-Path $targetDir $binaryName
 
 Push-Location $repoRoot
 try {
     $env:GOOS = $GOOS
     $env:GOARCH = $GOARCH
+    $env:GOCACHE = $goCacheDir
+    $env:GOTMPDIR = $goTmpDir
     go build -o $output ./cmd/kdoctor
     Write-Host "Built $output"
 }

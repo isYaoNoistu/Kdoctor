@@ -21,6 +21,7 @@ type Config struct {
 	Host           HostConfig               `json:"host" yaml:"host"`
 	Thresholds     ThresholdConfig          `json:"thresholds" yaml:"thresholds"`
 	Diagnosis      DiagnosisConfig          `json:"diagnosis" yaml:"diagnosis"`
+	Output         OutputConfig             `json:"output" yaml:"output"`
 }
 
 type ProfileConfig struct {
@@ -153,6 +154,13 @@ type DiagnosisConfig struct {
 	EnableConfidence           bool     `json:"enable_confidence" yaml:"enable_confidence"`
 	SuppressDownstreamSymptoms bool     `json:"suppress_downstream_symptoms" yaml:"suppress_downstream_symptoms"`
 	RulePacks                  []string `json:"rule_packs" yaml:"rule_packs"`
+}
+
+type OutputConfig struct {
+	MaxEvidenceItems int  `json:"max_evidence_items" yaml:"max_evidence_items"`
+	ShowPassChecks   bool `json:"show_pass_checks" yaml:"show_pass_checks"`
+	ShowSkipChecks   bool `json:"show_skip_checks" yaml:"show_skip_checks"`
+	Verbose          bool `json:"verbose" yaml:"verbose"`
 }
 
 func NormalizeInputPath(path string) string {

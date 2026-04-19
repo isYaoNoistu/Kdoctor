@@ -11,10 +11,10 @@ func Default() Config {
 		},
 		Logs: LogConfig{
 			Enabled:           true,
-			TailLines:         300,
-			LookbackMinutes:   15,
+			TailLines:         500,
+			LookbackMinutes:   30,
 			MinLinesPerSource: 20,
-			FreshnessWindow:   "15m",
+			FreshnessWindow:   "30m",
 			MaxFiles:          12,
 			MaxBytesPerSource: 1024 * 1024,
 		},
@@ -74,6 +74,12 @@ func Default() Config {
 			SuppressDownstreamSymptoms: true,
 			RulePacks:                  []string{"builtin"},
 		},
+		Output: OutputConfig{
+			MaxEvidenceItems: 8,
+			ShowPassChecks:   false,
+			ShowSkipChecks:   false,
+			Verbose:          false,
+		},
 	}
 }
 
@@ -102,6 +108,7 @@ func Merge(base, override Config) Config {
 	result.Host = mergeHost(result.Host, override.Host)
 	result.Thresholds = mergeThresholds(result.Thresholds, override.Thresholds)
 	result.Diagnosis = mergeDiagnosis(result.Diagnosis, override.Diagnosis)
+	result.Output = mergeOutput(result.Output, override.Output)
 	return result
 }
 
@@ -398,5 +405,16 @@ func mergeDiagnosis(base, override DiagnosisConfig) DiagnosisConfig {
 	if len(override.RulePacks) > 0 {
 		result.RulePacks = append([]string(nil), override.RulePacks...)
 	}
+	return result
+}
+
+func mergeOutput(base, override OutputConfig) OutputConfig {
+	result := base
+	if override.MaxEvidenceItems != 0 {
+		result.MaxEvidenceItems = override.MaxEvidenceItems
+	}
+	result.ShowPassChecks = result.ShowPassChecks || override.ShowPassChecks
+	result.ShowSkipChecks = result.ShowSkipChecks || override.ShowSkipChecks
+	result.Verbose = result.Verbose || override.Verbose
 	return result
 }

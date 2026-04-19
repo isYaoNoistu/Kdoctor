@@ -36,7 +36,7 @@ type Report struct {
 
 func NewReport(mode, profile string, checkedAt time.Time) Report {
 	return Report{
-		ToolVersion: "2.0.0-alpha.1",
+		ToolVersion: "2.0.0",
 		Mode:        mode,
 		Profile:     profile,
 		CheckedAt:   checkedAt,
@@ -72,7 +72,12 @@ func (r *Report) Finalize() {
 
 	var summary Summary
 	summary.Status = StatusPass
-	for _, check := range r.Checks {
+	for i := range r.Checks {
+		check := r.Checks[i]
+		check.Evidence = normalizeStrings(check.Evidence)
+		check.PossibleCauses = normalizeStrings(check.PossibleCauses)
+		check.NextActions = normalizeStrings(check.NextActions)
+		r.Checks[i] = check
 		switch check.Status {
 		case StatusCrit:
 			summary.CriticalCount++
@@ -102,6 +107,28 @@ func (r *Report) Finalize() {
 	summary.RootCauses = r.Summary.RootCauses
 	summary.RecommendedActions = r.Summary.RecommendedActions
 	r.Summary = summary
+}
+
+func normalizeStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func statusRank(status CheckStatus) int {

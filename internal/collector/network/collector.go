@@ -2,6 +2,8 @@ package network
 
 import (
 	"context"
+	"net"
+	"strings"
 
 	"kdoctor/internal/composeutil"
 	"kdoctor/internal/config"
@@ -14,24 +16,10 @@ type Collector struct{}
 func (Collector) CollectBase(ctx context.Context, env *config.Runtime) *snapshot.NetworkSnapshot {
 	out := &snapshot.NetworkSnapshot{}
 	for _, address := range bootstrapTargets(env) {
-		result := tcp.Dial(ctx, address, env.TCPTimeout)
-		out.BootstrapChecks = append(out.BootstrapChecks, snapshot.EndpointCheck{
-			Kind:       "bootstrap",
-			Address:    address,
-			Reachable:  result.Reachable,
-			DurationMs: result.Duration.Milliseconds(),
-			Error:      result.Error,
-		})
+		appendEndpointCheck(ctx, env, &out.BootstrapChecks, "bootstrap", address)
 	}
 	for _, address := range env.ControllerEndpoints {
-		result := tcp.Dial(ctx, address, env.TCPTimeout)
-		out.ControllerChecks = append(out.ControllerChecks, snapshot.EndpointCheck{
-			Kind:       "controller",
-			Address:    address,
-			Reachable:  result.Reachable,
-			DurationMs: result.Duration.Milliseconds(),
-			Error:      result.Error,
-		})
+		appendEndpointCheck(ctx, env, &out.ControllerChecks, "controller", address)
 	}
 	return out
 }
@@ -51,14 +39,7 @@ func (Collector) CollectMetadata(ctx context.Context, env *config.Runtime, netwo
 		network = &snapshot.NetworkSnapshot{}
 	}
 	for _, broker := range brokers {
-		result := tcp.Dial(ctx, broker.Address, env.TCPTimeout)
-		network.MetadataChecks = append(network.MetadataChecks, snapshot.EndpointCheck{
-			Kind:       "metadata",
-			Address:    broker.Address,
-			Reachable:  result.Reachable,
-			DurationMs: result.Duration.Milliseconds(),
-			Error:      result.Error,
-		})
+		appendEndpointCheck(ctx, env, &network.MetadataChecks, "metadata", broker.Address)
 	}
 	return network
 }
@@ -71,26 +52,54 @@ func (Collector) CollectComposeControllers(ctx context.Context, env *config.Runt
 		return network
 	}
 
-	seen := map[string]struct{}{}
 	for _, service := range composeutil.KafkaServices(compose) {
 		voters, err := composeutil.ParseVoters(service.Environment["KAFKA_CFG_CONTROLLER_QUORUM_VOTERS"])
 		if err != nil {
 			continue
 		}
 		for _, address := range voters {
-			if _, ok := seen[address]; ok {
-				continue
-			}
-			seen[address] = struct{}{}
-			result := tcp.Dial(ctx, address, env.TCPTimeout)
-			network.ControllerChecks = append(network.ControllerChecks, snapshot.EndpointCheck{
-				Kind:       "controller",
-				Address:    address,
-				Reachable:  result.Reachable,
-				DurationMs: result.Duration.Milliseconds(),
-				Error:      result.Error,
-			})
+			appendEndpointCheck(ctx, env, &network.ControllerChecks, "controller", address)
 		}
 	}
 	return network
+}
+
+func appendEndpointCheck(ctx context.Context, env *config.Runtime, checks *[]snapshot.EndpointCheck, kind string, address string) {
+	if checks == nil {
+		return
+	}
+	normalized := normalizeEndpoint(address)
+	if normalized == "" || containsEndpoint(*checks, normalized) {
+		return
+	}
+
+	result := tcp.Dial(ctx, address, env.TCPTimeout)
+	*checks = append(*checks, snapshot.EndpointCheck{
+		Kind:       kind,
+		Address:    normalized,
+		Reachable:  result.Reachable,
+		DurationMs: result.Duration.Milliseconds(),
+		Error:      result.Error,
+	})
+}
+
+func containsEndpoint(checks []snapshot.EndpointCheck, address string) bool {
+	for _, check := range checks {
+		if normalizeEndpoint(check.Address) == address {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeEndpoint(address string) string {
+	address = strings.TrimSpace(address)
+	if address == "" {
+		return ""
+	}
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return strings.ToLower(address)
+	}
+	return strings.ToLower(net.JoinHostPort(host, port))
 }

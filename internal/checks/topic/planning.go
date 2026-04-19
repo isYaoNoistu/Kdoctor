@@ -43,16 +43,18 @@ func (c PlanningChecker) Run(_ context.Context, bundle *snapshot.Bundle) model.C
 			replicationFactor = len(topic.Partitions[0].Replicas)
 		}
 		partitionCount := len(topic.Partitions)
-		evidence = append(evidence, fmt.Sprintf("topic=%s partitions=%d rf=%d", topic.Name, partitionCount, replicationFactor))
-		if replicationFactor > c.ExpectedBrokerCount {
+
+		switch {
+		case replicationFactor > c.ExpectedBrokerCount:
 			failures++
-		} else if partitionCount < c.ExpectedBrokerCount {
+			evidence = append(evidence, fmt.Sprintf("topic=%s partitions=%d rf=%d broker_count=%d", topic.Name, partitionCount, replicationFactor, c.ExpectedBrokerCount))
+		case partitionCount < c.ExpectedBrokerCount:
 			warnings++
+			evidence = append(evidence, fmt.Sprintf("topic=%s partitions=%d broker_count=%d", topic.Name, partitionCount, c.ExpectedBrokerCount))
 		}
 	}
 
 	result := rule.NewPass("TOP-011", "topic_planning", "topic", "topic 分区与副本规划在当前 broker 数下结构合理")
-	result.Evidence = evidence
 	if failures > 0 {
 		result = rule.NewFail("TOP-011", "topic_planning", "topic", "存在 topic 副本因子高于 broker 数，属于明显规划错误")
 		result.Evidence = evidence

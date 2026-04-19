@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	clientchecks "kdoctor/internal/checks/client"
@@ -12,22 +13,20 @@ import (
 	kraftchecks "kdoctor/internal/checks/kraft"
 	lintchecks "kdoctor/internal/checks/lint"
 	logchecks "kdoctor/internal/checks/logs"
-	metricschecks "kdoctor/internal/checks/metrics"
 	networkchecks "kdoctor/internal/checks/network"
 	producerchecks "kdoctor/internal/checks/producer"
 	securitychecks "kdoctor/internal/checks/security"
 	storagechecks "kdoctor/internal/checks/storage"
 	topicchecks "kdoctor/internal/checks/topic"
 	transactionchecks "kdoctor/internal/checks/transaction"
-	upgradechecks "kdoctor/internal/checks/upgrade"
 	composecollector "kdoctor/internal/collector/compose"
 	dockercollector "kdoctor/internal/collector/docker"
 	groupcollector "kdoctor/internal/collector/group"
 	hostcollector "kdoctor/internal/collector/host"
 	kafkacollector "kdoctor/internal/collector/kafka"
 	logcollector "kdoctor/internal/collector/logs"
-	metricscollector "kdoctor/internal/collector/metrics"
 	networkcollector "kdoctor/internal/collector/network"
+	"kdoctor/internal/composeutil"
 	"kdoctor/internal/config"
 	"kdoctor/internal/probe"
 	"kdoctor/internal/snapshot"
@@ -73,7 +72,6 @@ func CollectAndCheck(ctx context.Context, env *config.Runtime) (*snapshot.Bundle
 
 	bundle.Compose = composeSnap
 	bundle.Network = networkcollector.Collector{}.CollectComposeControllers(ctx, env, networkSnap, composeSnap)
-	bundle.Metrics = metricscollector.Collector{}.Collect(ctx, env, composeSnap)
 
 	kafkaSnap, topicSnap, kafkaErr := kafkacollector.Collector{}.Collect(ctx, env, networkSnap)
 	if kafkaErr != nil {
@@ -117,6 +115,17 @@ func minDuration(left time.Duration, right time.Duration) time.Duration {
 }
 
 func runChecks(ctx context.Context, env *config.Runtime, bundle *snapshot.Bundle) []model.CheckResult {
+	composeAvailable := bundle != nil && bundle.Compose != nil && len(composeutil.KafkaServices(bundle.Compose)) > 0
+	hostAvailable := hostEnabled(env, bundle)
+	dockerAvailable := dockerEnabled(env, bundle)
+	logInputEnabled := logEnabled(env, bundle)
+	logSourcesAvailable := logEvidence(bundle)
+	groupTargetsEnabled := groupEnabled(env)
+	controllerConfigAvailable := composeAvailable || len(env.ControllerEndpoints) > 0
+	transactionContextEnabled := env.Config.Probe.TXProbeEnabled ||
+		strings.TrimSpace(env.SelectedProfile.Producer.TransactionalID) != "" ||
+		strings.EqualFold(strings.TrimSpace(env.SelectedProfile.Consumer.IsolationLevel), "read_committed")
+
 	checkers := []checker{
 		networkchecks.BootstrapChecker{},
 		networkchecks.ListenerChecker{},
@@ -136,14 +145,9 @@ func runChecks(ctx context.Context, env *config.Runtime, bundle *snapshot.Bundle
 		kafkachecks.InternalTopicsChecker{},
 		kafkachecks.MetadataLatencyChecker{},
 		kafkachecks.TopologyMismatchChecker{},
-		kraftchecks.ConfigChecker{},
 		kraftchecks.ControllerChecker{},
 		kraftchecks.QuorumChecker{},
 		kraftchecks.MajorityChecker{},
-		kraftchecks.EndpointConfigChecker{},
-		kraftchecks.EpochChecker{},
-		kraftchecks.UnknownVoterChecker{},
-		kraftchecks.FinalizationChecker{},
 		topicchecks.LeaderChecker{},
 		topicchecks.ReplicaHealthChecker{},
 		topicchecks.ISRChecker{MinISR: env.SelectedProfile.ExpectedMinISR},
@@ -151,71 +155,7 @@ func runChecks(ctx context.Context, env *config.Runtime, bundle *snapshot.Bundle
 		topicchecks.UnderMinISRChecker{MinISR: env.SelectedProfile.ExpectedMinISR},
 		topicchecks.OfflineReplicaChecker{},
 		topicchecks.LeaderSkewChecker{WarnPct: env.Config.Thresholds.LeaderSkewWarnPct},
-		topicchecks.ReplicaLagChecker{Warn: env.Config.Thresholds.ReplicaLagWarn},
 		topicchecks.PlanningChecker{ExpectedBrokerCount: env.SelectedProfile.BrokerCount},
-		lintchecks.ComposeChecker{},
-		lintchecks.NodeIDChecker{},
-		lintchecks.ClusterIDChecker{},
-		lintchecks.ProcessRolesChecker{RequireBroker: true, RequireController: true},
-		lintchecks.QuorumVotersChecker{},
-		lintchecks.ListenersChecker{},
-		lintchecks.AdvertisedViewChecker{ExecutionView: env.SelectedProfile.ExecutionView},
-		lintchecks.ControllerListenerChecker{},
-		lintchecks.BrokerIdentityChecker{},
-		lintchecks.TopologyChecker{
-			ExpectedBrokerCount: env.SelectedProfile.BrokerCount,
-			ExpectedControllers: len(env.SelectedProfile.ControllerEndpoints),
-		},
-		lintchecks.TopicPlanningChecker{},
-		lintchecks.MetadataDirChecker{},
-		lintchecks.InterBrokerListenerChecker{},
-		lintchecks.ReplicationChecker{ExpectedBrokerCount: env.SelectedProfile.BrokerCount},
-		securitychecks.ListenerChecker{
-			ExecutionView: env.SelectedProfile.ExecutionView,
-			SecurityMode:  env.SelectedProfile.SecurityMode,
-		},
-		securitychecks.SASLChecker{
-			ExecutionView: env.SelectedProfile.ExecutionView,
-			SecurityMode:  env.SelectedProfile.SecurityMode,
-			SASLMechanism: env.SelectedProfile.SASLMechanism,
-		},
-		securitychecks.TLSChecker{
-			ExecutionView:    env.SelectedProfile.ExecutionView,
-			CertWarnDays:     env.Config.Thresholds.CertExpiryWarnDays,
-			HandshakeTimeout: env.TCPTimeout,
-		},
-		securitychecks.AuthorizationChecker{},
-		securitychecks.AuthorizerChecker{},
-		storagechecks.CapacityChecker{
-			DiskWarnPct:  env.Config.Thresholds.DiskWarnPct,
-			DiskCritPct:  env.Config.Thresholds.DiskCritPct,
-			InodeWarnPct: env.Config.Thresholds.InodeWarnPct,
-		},
-		storagechecks.OfflineLogDirChecker{},
-		storagechecks.LayoutChecker{},
-		storagechecks.PartialFailureChecker{},
-		storagechecks.MountPlanningChecker{},
-		storagechecks.TieredStorageChecker{},
-		metricschecks.UnderReplicatedChecker{WarnCount: env.Config.Thresholds.URPWarn},
-		metricschecks.MinISRChecker{UnderMinISRCrit: env.Config.Thresholds.UnderMinISRCrit},
-		metricschecks.OfflineLogDirChecker{},
-		metricschecks.ReplicaLagChecker{Warn: env.Config.Thresholds.ReplicaLagWarn},
-		metricschecks.NetworkIdleChecker{Warn: env.Config.Thresholds.NetworkIdleWarn},
-		metricschecks.RequestIdleChecker{Warn: env.Config.Thresholds.RequestIdleWarn},
-		metricschecks.NetworkIdleMetricChecker{Warn: env.Config.Thresholds.NetworkIdleWarn},
-		metricschecks.RequestIdleMetricChecker{Warn: env.Config.Thresholds.RequestIdleWarn},
-		metricschecks.ProduceThrottleChecker{WarnMs: env.Config.Thresholds.ProduceThrottleWarnMs},
-		metricschecks.FetchThrottleChecker{WarnMs: env.Config.Thresholds.FetchThrottleWarnMs},
-		metricschecks.RequestQuotaChecker{},
-		metricschecks.BackpressureChecker{RequestLatencyWarnMs: env.Config.Thresholds.RequestLatencyWarnMs},
-		metricschecks.RequestPressureChecker{
-			WarnLatencyMs: env.Config.Thresholds.RequestLatencyWarnMs,
-			WarnPurgatory: env.Config.Thresholds.PurgatoryWarnCount,
-		},
-		metricschecks.HeapGCChecker{
-			HeapWarnPct:   env.Config.Thresholds.HeapUsedWarnPct,
-			GCPauseWarnMs: env.Config.Thresholds.GCPauseWarnMs,
-		},
 		producerchecks.AcksChecker{
 			Acks:               env.SelectedProfile.Producer.Acks,
 			ExpectedDurability: env.SelectedProfile.Producer.ExpectedDurability,
@@ -234,9 +174,6 @@ func runChecks(ctx context.Context, env *config.Runtime, bundle *snapshot.Bundle
 		producerchecks.MessageSizeChecker{
 			ProbeMessageBytes: env.ProbeMessageBytes,
 		},
-		producerchecks.ThrottleChecker{
-			WarnMs: env.Config.Thresholds.ProduceThrottleWarnMs,
-		},
 		producerchecks.TxTimeoutChecker{
 			TransactionTimeoutMs: env.SelectedProfile.Producer.TransactionTimeoutMs,
 		},
@@ -245,82 +182,152 @@ func runChecks(ctx context.Context, env *config.Runtime, bundle *snapshot.Bundle
 		clientchecks.ConsumerChecker{},
 		clientchecks.CommitChecker{},
 		clientchecks.EndToEndChecker{},
-		consumerchecks.LagChecker{
-			WarnLag: env.Config.Thresholds.ConsumerLagWarn,
-			CritLag: env.Config.Thresholds.ConsumerLagCrit,
-			Targets: env.SelectedProfile.GroupProbeTargets,
-		},
-		consumerchecks.RebalanceChecker{},
-		consumerchecks.CoordinatorChecker{},
-		consumerchecks.PollIntervalChecker{
-			MaxPollIntervalMs: env.SelectedProfile.Consumer.MaxPollIntervalMs,
-			SessionTimeoutMs:  env.SelectedProfile.Consumer.SessionTimeoutMs,
-		},
-		consumerchecks.HeartbeatChecker{
-			SessionTimeoutMs:    env.SelectedProfile.Consumer.SessionTimeoutMs,
-			HeartbeatIntervalMs: env.SelectedProfile.Consumer.HeartbeatIntervalMs,
-		},
-		consumerchecks.OffsetResetChecker{
-			AutoOffsetReset: env.SelectedProfile.Consumer.AutoOffsetReset,
-		},
-		transactionchecks.TopicAbsenceChecker{
-			TXProbeEnabled:  env.Config.Probe.TXProbeEnabled,
-			TransactionalID: env.SelectedProfile.Producer.TransactionalID,
-		},
-		transactionchecks.RequiredTopicChecker{
-			TXProbeEnabled:  env.Config.Probe.TXProbeEnabled,
-			TransactionalID: env.SelectedProfile.Producer.TransactionalID,
-		},
-		transactionchecks.TimeoutChecker{
-			TransactionTimeoutMs: env.SelectedProfile.Producer.TransactionTimeoutMs,
-		},
-		transactionchecks.IsolationChecker{
-			IsolationLevel: env.SelectedProfile.Consumer.IsolationLevel,
-			TXProbeEnabled: env.Config.Probe.TXProbeEnabled,
-		},
-		transactionchecks.OutcomeChecker{
-			TXProbeEnabled:  env.Config.Probe.TXProbeEnabled,
-			TransactionalID: env.SelectedProfile.Producer.TransactionalID,
-		},
-		upgradechecks.RollingVersionChecker{},
-		upgradechecks.FeatureChecker{},
-		upgradechecks.TieredStorageChecker{},
-		hostchecks.DiskChecker{
-			WarnPercent: env.Config.Thresholds.DiskWarnPct,
-			CritPercent: env.Config.Thresholds.DiskCritPct,
-		},
-		hostchecks.CapacityChecker{
-			DiskWarnPct:  env.Config.Thresholds.DiskWarnPct,
-			DiskCritPct:  env.Config.Thresholds.DiskCritPct,
-			InodeWarnPct: env.Config.Thresholds.InodeWarnPct,
-		},
-		hostchecks.FDChecker{
-			WarnPct: env.Config.Host.FDWarnPct,
-			CritPct: env.Config.Host.FDCritPct,
-		},
-		hostchecks.ClockChecker{
-			WarnMs: env.Config.Host.ClockSkewWarnMs,
-		},
-		hostchecks.PortChecker{},
-		hostchecks.ListenerDriftChecker{},
-		hostchecks.MemoryChecker{
-			WarnPct: env.Config.Thresholds.HeapUsedWarnPct,
-		},
-		dockerchecks.ExistenceChecker{},
-		dockerchecks.RunningChecker{},
-		dockerchecks.OOMChecker{},
-		dockerchecks.RestartChecker{},
-		dockerchecks.MemoryPlanningChecker{},
-		dockerchecks.MountChecker{},
-		dockerchecks.PersistenceChecker{},
-		logchecks.SourcesChecker{},
-		logchecks.FingerprintChecker{},
-		logchecks.HitContextChecker{},
-		logchecks.FreshnessChecker{},
-		logchecks.StormChecker{},
-		logchecks.CustomPatternChecker{},
-		logchecks.ExplanationChecker{},
-		logchecks.AggregateChecker{},
+	}
+
+	if controllerConfigAvailable {
+		checkers = append(checkers,
+			kraftchecks.ConfigChecker{},
+		)
+	}
+	if composeAvailable {
+		checkers = append(checkers,
+			kraftchecks.EndpointConfigChecker{},
+			lintchecks.ComposeChecker{},
+			lintchecks.NodeIDChecker{},
+			lintchecks.ClusterIDChecker{},
+			lintchecks.ProcessRolesChecker{RequireBroker: true, RequireController: true},
+			lintchecks.QuorumVotersChecker{},
+			lintchecks.ListenersChecker{},
+			lintchecks.AdvertisedViewChecker{ExecutionView: env.SelectedProfile.ExecutionView},
+			lintchecks.ControllerListenerChecker{},
+			lintchecks.BrokerIdentityChecker{},
+			lintchecks.TopologyChecker{
+				ExpectedBrokerCount: env.SelectedProfile.BrokerCount,
+				ExpectedControllers: len(env.SelectedProfile.ControllerEndpoints),
+			},
+			lintchecks.TopicPlanningChecker{},
+			lintchecks.MetadataDirChecker{},
+			lintchecks.InterBrokerListenerChecker{},
+			lintchecks.ReplicationChecker{ExpectedBrokerCount: env.SelectedProfile.BrokerCount},
+			securitychecks.ListenerChecker{
+				ExecutionView: env.SelectedProfile.ExecutionView,
+				SecurityMode:  env.SelectedProfile.SecurityMode,
+			},
+			securitychecks.SASLChecker{
+				ExecutionView: env.SelectedProfile.ExecutionView,
+				SecurityMode:  env.SelectedProfile.SecurityMode,
+				SASLMechanism: env.SelectedProfile.SASLMechanism,
+			},
+			securitychecks.TLSChecker{
+				ExecutionView:    env.SelectedProfile.ExecutionView,
+				CertWarnDays:     env.Config.Thresholds.CertExpiryWarnDays,
+				HandshakeTimeout: env.TCPTimeout,
+			},
+			securitychecks.AuthorizerChecker{},
+			storagechecks.LayoutChecker{},
+			storagechecks.MountPlanningChecker{},
+			storagechecks.TieredStorageChecker{},
+		)
+	}
+	if composeAvailable || logSourcesAvailable || probeEnabled(env) {
+		checkers = append(checkers, securitychecks.AuthorizationChecker{})
+	}
+	if groupTargetsEnabled {
+		checkers = append(checkers,
+			consumerchecks.LagChecker{
+				WarnLag: env.Config.Thresholds.ConsumerLagWarn,
+				CritLag: env.Config.Thresholds.ConsumerLagCrit,
+				Targets: env.SelectedProfile.GroupProbeTargets,
+			},
+			consumerchecks.RebalanceChecker{},
+			consumerchecks.CoordinatorChecker{},
+			consumerchecks.PollIntervalChecker{
+				MaxPollIntervalMs: env.SelectedProfile.Consumer.MaxPollIntervalMs,
+				SessionTimeoutMs:  env.SelectedProfile.Consumer.SessionTimeoutMs,
+			},
+			consumerchecks.HeartbeatChecker{
+				SessionTimeoutMs:    env.SelectedProfile.Consumer.SessionTimeoutMs,
+				HeartbeatIntervalMs: env.SelectedProfile.Consumer.HeartbeatIntervalMs,
+			},
+			consumerchecks.OffsetResetChecker{
+				AutoOffsetReset: env.SelectedProfile.Consumer.AutoOffsetReset,
+			},
+		)
+	}
+	if transactionContextEnabled {
+		checkers = append(checkers,
+			transactionchecks.TopicAbsenceChecker{
+				TXProbeEnabled:  env.Config.Probe.TXProbeEnabled,
+				TransactionalID: env.SelectedProfile.Producer.TransactionalID,
+			},
+			transactionchecks.RequiredTopicChecker{
+				TXProbeEnabled:  env.Config.Probe.TXProbeEnabled,
+				TransactionalID: env.SelectedProfile.Producer.TransactionalID,
+			},
+			transactionchecks.TimeoutChecker{
+				TransactionTimeoutMs: env.SelectedProfile.Producer.TransactionTimeoutMs,
+			},
+			transactionchecks.IsolationChecker{
+				IsolationLevel: env.SelectedProfile.Consumer.IsolationLevel,
+				TXProbeEnabled: env.Config.Probe.TXProbeEnabled,
+			},
+			transactionchecks.OutcomeChecker{
+				TXProbeEnabled:  env.Config.Probe.TXProbeEnabled,
+				TransactionalID: env.SelectedProfile.Producer.TransactionalID,
+			},
+		)
+	}
+	if hostAvailable {
+		checkers = append(checkers,
+			hostchecks.DiskChecker{
+				WarnPercent: env.Config.Thresholds.DiskWarnPct,
+				CritPercent: env.Config.Thresholds.DiskCritPct,
+			},
+			hostchecks.CapacityChecker{
+				DiskWarnPct:  env.Config.Thresholds.DiskWarnPct,
+				DiskCritPct:  env.Config.Thresholds.DiskCritPct,
+				InodeWarnPct: env.Config.Thresholds.InodeWarnPct,
+			},
+			hostchecks.FDChecker{
+				WarnPct: env.Config.Host.FDWarnPct,
+				CritPct: env.Config.Host.FDCritPct,
+			},
+			hostchecks.PortChecker{},
+			hostchecks.ListenerDriftChecker{},
+			hostchecks.MemoryChecker{
+				WarnPct: env.Config.Thresholds.HeapUsedWarnPct,
+			},
+			storagechecks.CapacityChecker{
+				DiskWarnPct:  env.Config.Thresholds.DiskWarnPct,
+				DiskCritPct:  env.Config.Thresholds.DiskCritPct,
+				InodeWarnPct: env.Config.Thresholds.InodeWarnPct,
+			},
+		)
+	}
+	if dockerAvailable {
+		checkers = append(checkers,
+			dockerchecks.ExistenceChecker{},
+			dockerchecks.RunningChecker{},
+			dockerchecks.OOMChecker{},
+			dockerchecks.RestartChecker{},
+			dockerchecks.MemoryPlanningChecker{},
+			dockerchecks.MountChecker{},
+			dockerchecks.PersistenceChecker{},
+		)
+	}
+	if logInputEnabled {
+		checkers = append(checkers, logchecks.SourcesChecker{})
+	}
+	if logSourcesAvailable {
+		checkers = append(checkers,
+			logchecks.FingerprintChecker{},
+			logchecks.HitContextChecker{},
+			logchecks.FreshnessChecker{},
+			logchecks.StormChecker{},
+			logchecks.CustomPatternChecker{},
+			logchecks.ExplanationChecker{},
+			logchecks.AggregateChecker{},
+		)
 	}
 
 	results := make([]model.CheckResult, 0, len(checkers))
