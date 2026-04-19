@@ -8,10 +8,3 @@ func topicSnap(bundle *snapshot.Bundle) *snapshot.TopicSnapshot {
 	}
 	return bundle.Topic
 }
-
-func metricsSnap(bundle *snapshot.Bundle) *snapshot.MetricsSnapshot {
-	if bundle == nil {
-		return nil
-	}
-	return bundle.Metrics
-}

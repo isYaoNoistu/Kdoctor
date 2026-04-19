@@ -76,7 +76,7 @@ func summarizeCoverage(env *config.Runtime, bundle *snapshot.Bundle) []string {
 	coverage = append(coverage, describeCoverage("Docker", dockerEnabled(env, bundle), dockerEvidence(bundle)))
 	coverage = append(coverage, describeCoverage("宿主机", hostEnabled(env, bundle), hostEvidence(bundle)))
 	coverage = append(coverage, describeCoverage("日志", logEnabled(env, bundle), logEvidence(bundle)))
-	coverage = append(coverage, describeCoverage("探针", probeEnabled(env), probeEvidence(env, bundle)))
+	coverage = append(coverage, describeProbeCoverage(env, bundle))
 	return coverage
 }
 
@@ -85,10 +85,20 @@ func describeCoverage(name string, enabled bool, hasEvidence bool) string {
 	case !enabled:
 		return fmt.Sprintf("%s=未纳入本次运行", name)
 	case hasEvidence:
-		return fmt.Sprintf("%s=已启用，已获取证据", name)
+		return fmt.Sprintf("%s=已获取证据", name)
 	default:
-		return fmt.Sprintf("%s=已启用，未获取证据", name)
+		return fmt.Sprintf("%s=无可用证据", name)
 	}
+}
+
+func describeProbeCoverage(env *config.Runtime, bundle *snapshot.Bundle) string {
+	if !probeEnabled(env) {
+		return "探针=未纳入本次运行"
+	}
+	if bundle != nil && bundle.Probe != nil && !bundle.Probe.Skipped {
+		return "探针=已执行"
+	}
+	return "探针=无可用证据"
 }
 
 func networkEnabled(env *config.Runtime) bool {

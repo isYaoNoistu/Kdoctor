@@ -37,7 +37,7 @@ func (ControllerChecker) Run(_ context.Context, snap *snapshot.Bundle) model.Che
 	}
 
 	if snap.Network == nil || len(snap.Network.ControllerChecks) == 0 {
-		result.Evidence = append(result.Evidence, "controller listener was not directly probed in the current input mode")
+		result.Evidence = append(result.Evidence, "metadata 返回的是活动 controller 所属 broker 地址；当前输入模式未直接探测 CONTROLLER listener")
 		return result
 	}
 
@@ -62,7 +62,7 @@ func (ControllerChecker) Run(_ context.Context, snap *snapshot.Bundle) model.Che
 		return result
 	}
 
-	result.Evidence = append(result.Evidence, "active controller address was not part of the explicit controller endpoint set")
+	result.Evidence = append(result.Evidence, "metadata 返回的是活动 controller 所属 broker 地址；它不要求等于 controller.quorum.voters 中的 CONTROLLER 端点")
 	return result
 }
 

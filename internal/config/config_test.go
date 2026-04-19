@@ -37,6 +37,44 @@ func TestMergePreservesDefaultsAndOverrides(t *testing.T) {
 	}
 }
 
+func TestLoadFilePreservesExplicitFalseForEnabledFlags(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "kdoctor.yaml")
+	content := []byte(`
+version: 2
+docker:
+  enabled: false
+logs:
+  enabled: false
+probe:
+  enabled: false
+host:
+  enabled: false
+`)
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	cfg, err := LoadFile(path, true)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	merged := Merge(Default(), cfg)
+	if merged.Docker.Enabled {
+		t.Fatal("expected docker.enabled=false to override default")
+	}
+	if merged.Logs.Enabled {
+		t.Fatal("expected logs.enabled=false to override default")
+	}
+	if merged.Probe.Enabled {
+		t.Fatal("expected probe.enabled=false to override default")
+	}
+	if merged.Host.Enabled {
+		t.Fatal("expected host.enabled=false to override default")
+	}
+}
+
 func TestDefaultProfileIsGenericBootstrap(t *testing.T) {
 	cfg := Default()
 	if cfg.DefaultProfile != "generic-bootstrap" {

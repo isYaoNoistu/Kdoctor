@@ -1,6 +1,8 @@
 package markdown
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +30,7 @@ func TestRendererBootstrapOnlyScenario(t *testing.T) {
 		"## 重点问题",
 		"| 失败 | NET-003 | 网络 | metadata 返回了不可达的 broker 端点 |",
 	)
+	assertGolden(t, "bootstrap_only.md", text)
 	if strings.Contains(text, "CFG-001 配置") {
 		t.Fatalf("expected skip check to stay out of default markdown appendix, got %q", text)
 	}
@@ -50,6 +53,7 @@ func TestRendererProbeOnlyScenario(t *testing.T) {
 		"其余 1 条已省略",
 		"- 下一步：",
 	)
+	assertGolden(t, "probe_only.md", text)
 }
 
 func TestRendererComposeDockerLogsScenario(t *testing.T) {
@@ -71,6 +75,7 @@ func TestRendererComposeDockerLogsScenario(t *testing.T) {
 		"### DKR-003 Docker",
 		"### LOG-001 日志",
 	)
+	assertGolden(t, "compose_logs_verbose.md", text)
 }
 
 func sampleReport(mode string, profile string, checks []model.CheckResult) model.Report {
@@ -97,5 +102,17 @@ func assertContainsAll(t *testing.T, text string, fragments ...string) {
 		if !strings.Contains(text, fragment) {
 			t.Fatalf("expected output to contain %q, got %q", fragment, text)
 		}
+	}
+}
+
+func assertGolden(t *testing.T, name string, got string) {
+	t.Helper()
+	path := filepath.Join("testdata", "golden", name)
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read golden %s: %v", name, err)
+	}
+	if got != string(want) {
+		t.Fatalf("golden mismatch for %s\n--- got ---\n%s\n--- want ---\n%s", name, got, string(want))
 	}
 }

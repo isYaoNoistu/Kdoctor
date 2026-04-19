@@ -43,7 +43,7 @@ func (RegistrationIntegrityChecker) Run(_ context.Context, snap *snapshot.Bundle
 	}
 	sort.Ints(actualIDs)
 
-	evidence := []string{fmt.Sprintf("actual_ids=%v", actualIDs)}
+	evidence := []string{fmt.Sprintf("实际 broker ID=%v", actualIDs)}
 	if expectedCount > 0 {
 		evidence = append(evidence, fmt.Sprintf("expected_count=%d", expectedCount))
 	}
@@ -62,7 +62,7 @@ func (RegistrationIntegrityChecker) Run(_ context.Context, snap *snapshot.Bundle
 	if len(expectedIDs) > 0 && !sameIntSet(expectedIDs, actualIDs) {
 		result = rule.NewWarn("KFK-006", "broker_registration_integrity", "kafka", "compose 期望的 broker 集合与 metadata 注册集合不完全一致")
 		result.Evidence = evidence
-		result.NextActions = []string{"确认环境是否发生 broker 重建或拓扑变更", "检查 compose 与当前 metadata 是否已脱节", "结合 KFK-009 一起判断拓扑偏离"}
+		result.NextActions = []string{"确认环境是否发生 broker 重建或拓扑变更", "检查 compose 与当前 metadata 是否已经脱节", "结合 KFK-009 一起判断拓扑偏移"}
 	}
 	return result
 }

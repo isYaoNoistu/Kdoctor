@@ -2,25 +2,31 @@
 
 ## 1. 文档定位
 
-本文档定义 `Kdoctor` 的工程标准，目标是保证后续开发、重构、评审和测试都围绕同一套结构进行。
+本文档定义 `Kdoctor` 在 **V2 封版状态** 下的工程边界与实现标准。
 
-它回答的是“代码该怎么组织、模块该如何协作、什么样的改动算符合工程标准”。
+它不再讨论“要不要继续扩功能”，而是回答：
 
-## 2. 工程目标
+- 代码如何组织
+- 模块如何协作
+- 哪些依赖方向是允许的
+- 什么样的改动才符合封版后的工程标准
 
-`Kdoctor` 应当保持以下特征：
+## 2. 当前架构目标
+
+封版后的 `Kdoctor` 需要保持这些特征：
 
 - 单二进制交付
-- 默认可在 Linux 服务器和运维工作站场景使用
-- 支持 `bootstrap-only` 最小输入
-- 支持分层增强输入
-- 输出稳定、可读、可自动化
-- 单项数据源失败不会轻易拖死整体
+- `bootstrap-only` 可运行
+- `profile / compose / docker / logs / host` 为增强输入
+- 默认中文输出
+- 默认终端低噪声
+- 单项数据源失败不拖死整体
+- 以“可信度优先”替代“功能越多越好”
 
 ## 3. 标准目录结构
 
 ```text
-kdoctor/
+Kdoctor/
   cmd/
     kdoctor/
       main.go
@@ -41,22 +47,23 @@ kdoctor/
     snapshot/
     transport/
   pkg/
+    buildinfo/
     model/
-  dist/
   scripts/
   version/
   README.md
+  USER_GUIDE.md
   doc.md
   architecture.md
 ```
 
-目录约束：
+约束：
 
-- `cmd/kdoctor` 只放 CLI 入口。
-- `internal` 放业务实现。
-- `pkg/model` 放稳定模型。
-- `dist` 只放构建产物。
-- `version` 只放阶段记录。
+- `cmd/kdoctor` 只放 CLI 入口
+- `internal` 放业务实现
+- `pkg/model` 放稳定报告模型
+- `pkg/buildinfo` 放版本与提交信息
+- `version` 只放阶段文档与 release 基线
 
 ## 4. 模块职责
 
@@ -64,168 +71,136 @@ kdoctor/
 
 职责：
 
-- 解析命令行参数
-- 初始化应用
-- 负责退出码
+- 参数解析
+- `--version`
+- 进程退出码
 
 禁止：
 
 - 直接写检查逻辑
-- 直接访问 Kafka、Docker、Shell
+- 直接访问 Kafka / Docker / Shell
 
 ### 4.2 `internal/app`
 
 职责：
 
-- 装配配置、profile、运行时上下文
-- 选择输出格式
+- 配置装配
+- profile 选择
+- 输出格式分发
 - 驱动主流程
 
 ### 4.3 `internal/config`
 
 职责：
 
-- 配置结构定义
+- 配置结构
 - 默认值
-- 配置校验
-- 运行时配置合并
+- merge 语义
+- 校验
+- 运行时展开
 
-### 4.4 `internal/profile`
-
-职责：
-
-- 管理内置环境模板
-- 表达环境预期，而不是运行结果
-
-### 4.5 `internal/runner`
+### 4.4 `internal/runner`
 
 职责：
 
-- 编排阶段执行
-- 聚合 collector / checks / diagnose / output 所需上下文
-- 控制整体 timeout
+- 组织 collector / checks / diagnose / output
+- 控制 task timeout
+- 处理 soft degrade
+- 生成覆盖摘要
 
-要求：
-
-- 允许数据源降级
-- 保持主流程清晰
-
-### 4.6 `internal/snapshot`
+### 4.5 `internal/collector`
 
 职责：
 
-- 定义本轮检查统一快照
-- 作为 collector 与 checks 之间的稳定边界
+- 采集外部事实
+- 构造 snapshot
 
-要求：
+约束：
 
-- 结构化优先
-- 命名稳定
-- 避免把渲染用文本塞进快照
+- 不直接产出 `PASS/WARN/FAIL`
+- 不直接做终端渲染
+- `Collected` 与 `Available` 语义必须分开
 
-### 4.7 `internal/collector`
-
-职责：
-
-- 向外部系统采集事实
-- 构造快照
-
-禁止：
-
-- 直接产出 `PASS/WARN/FAIL`
-- 直接做终端渲染
-
-### 4.8 `internal/checks`
+### 4.6 `internal/checks`
 
 职责：
 
-- 基于快照做规则判断
-- 输出标准 `CheckResult`
+- 基于 snapshot 做规则判断
+- 产出稳定 `CheckResult`
 
-要求：
+约束：
 
-- 一个检查器负责一个稳定问题域
-- 每个检查器有唯一编号
-- 不在检查器之间互相强耦合调用
+- 一个检查器对应一个稳定问题域
+- 不在检查器之间做链式调用
+- 证据只输出真正命中的项
 
-### 4.9 `internal/probe`
-
-职责：
-
-- 执行 metadata / produce / consume / commit 探针
-- 输出 probe 快照
-
-要求：
-
-- 这是少数允许写入副作用的模块
-- 必须控制写入规模
-- 不能复用业务消费组
-
-### 4.10 `internal/diagnose`
+### 4.7 `internal/probe`
 
 职责：
 
-- 汇总多个检查结果
-- 进行主因判断
-- 生成 incident 摘要
+- 跑 `metadata -> topic-ready -> produce -> consume -> commit -> e2e`
+- 记录阶段边界
+- 对自动创建 probe topic 做最小副作用控制
 
-要求：
-
-- 优先做相关性归并，而不是简单列出问题
-
-### 4.11 `internal/output`
+### 4.8 `internal/diagnose`
 
 职责：
 
-- 把统一 `Report` 渲染为 terminal / json / markdown
+- 根因归并
+- 动作收敛
+- incident 摘要
 
-要求：
+约束：
+
+- 优先做同源归并
+- 不把上下文提示抬成主因
+
+### 4.9 `internal/output`
+
+职责：
+
+- `terminal / json / markdown`
+
+约束：
 
 - 渲染层不再做业务判断
-- 默认终端输出为中文
+- 默认终端折叠 `PASS / SKIP`
+- JSON 字段结构稳定
 
-### 4.12 `internal/localize`
-
-职责：
-
-- 对报告做文本本地化
-- 集中管理中文化映射
-
-要求：
-
-- 不把本地化逻辑散落到每个 checker
-
-### 4.13 `internal/transport`
+### 4.10 `internal/localize`
 
 职责：
 
-- 封装 Kafka、TCP、Docker、Shell 等外部访问
+- 报告中文化
+- 术语统一
+- 乱码与中英混排收口
 
-要求：
+### 4.11 `internal/transport`
 
-- transport 只处理调用与返回，不处理业务结论
+职责：
 
-## 5. 数据流标准
+- 封装 Kafka / TCP / Docker / Disk / Shell 调用
 
-主流程应保持如下顺序：
+约束：
+
+- transport 只负责访问与返回
+- 不负责业务结论
+
+## 5. 数据流
+
+主流程固定为：
 
 1. CLI 解析参数
-2. App 合并运行时配置
+2. App 装配运行时配置
 3. Runner 组织采集
 4. Collectors 产出 Snapshot
-5. Checks 基于 Snapshot 产出 CheckResult
-6. Diagnose 汇总为 Summary / Root Causes / Actions
-7. Output 渲染为终端、JSON 或 Markdown
+5. Checks 产出 CheckResult
+6. Diagnose 汇总主因与动作
+7. Output 渲染为终端 / JSON / Markdown
 
-禁止反向依赖：
+## 6. 依赖方向
 
-- output 不能反向依赖 collector
-- checks 不能直接控制 transport
-- cmd 不能跳过 app / runner 直接调用底层包
-
-## 6. 依赖规则
-
-允许的依赖方向：
+允许依赖：
 
 ```text
 cmd -> internal/app -> internal/runner
@@ -236,102 +211,77 @@ output -> model / localize
 pkg/model -> 不反向依赖 internal
 ```
 
+禁止反向依赖：
+
+- output 反向依赖 collector
+- checks 直接调用 transport 做外部访问
+- cmd 绕过 app / runner 直接拼装检查链
+
 ## 7. 报告标准
 
-### 7.1 Summary
+### 7.1 报告层
 
-必须包含：
+至少包含：
+
+- `mode`
+- `profile`
+- `checked_at`
+- `elapsed_ms`
+- `summary`
+- `checks`
+- `exit_code`
+- `tool_version`
+- `schema_version`
+
+### 7.2 摘要层
+
+至少包含：
 
 - 总体状态
-- broker 总数与存活数
+- broker 总数 / 存活数
 - 概览
+- 证据覆盖
 - 主因判断
 - 建议动作
 
-### 7.2 CheckResult
+### 7.3 检查项
 
-必须包含：
+至少包含：
 
-- 编号
-- 模块
-- 状态
-- 摘要
+- `id`
+- `module`
+- `status`
+- `summary`
+- `evidence`
+- `possible_causes`
+- `next_actions`
 
-建议包含：
+## 8. 默认输出标准
 
-- 证据
-- 可能原因
-- 下一步动作
+### 8.1 Terminal
 
-## 8. 中文输出标准
+- 默认只展开重点问题
+- `PASS / SKIP` 默认折叠
+- 证据去重并截断
+- 适合值班现场快速扫读
 
-终端报告和 Markdown 报告必须满足：
+### 8.2 JSON
 
-- 标题、标签、状态使用中文
-- 错误说明尽量中文化
-- 保留必要技术名词，例如 Kafka、broker、KRaft、ISR
+- 字段稳定
+- 向自动化友好
+- 新增字段只能向后兼容地加
 
-JSON 的键名可以保持稳定英文，但值应尽量中文化。
+### 8.3 Markdown
 
-## 9. 测试标准
+- 适合留档与工单
+- 章节固定
+- 与 terminal 保持同语义
 
-至少覆盖三层：
+## 9. 封版后的硬约束
 
-### 9.1 单元测试
-
-- 规则检查器
-- 归因层
-- 渲染层
-
-### 9.2 契约测试
-
-- JSON 输出结构
-- Markdown 输出关键段落
-- 退出码映射
-
-### 9.3 真实环境验证
-
-至少要验证：
-
-- `bootstrap-only`
-- `compose` 增强模式
-- JSON 输出
-- Markdown 输出
-
-## 10. 代码评审标准
-
-任何改动进入主分支前，应至少确认：
-
-- 是否破坏了 `bootstrap-only`
-- 是否引入新的误报
-- 是否保持了中文输出
-- 是否破坏 JSON / Markdown 输出
-- 是否更新了对应文档
-- 是否补了必要测试
-
-## 11. 文档标准
-
-文档分工如下：
-
-- `README.md`：工具定位与使用方法
-- `doc.md`：设计目标与能力边界
-- `architecture.md`：工程标准
-- `version/*.md`：阶段记录
-
-要求：
-
-- 文档编码统一为 UTF-8
-- 示例优先使用脱敏地址
-- 阶段文档说明目标、完成项、验证、问题和下一步
-
-## 12. 当前工程结论
-
-当前 `kdoctor` 已进入“V1 已交付、开始稳定化优化”的阶段。
-
-后续所有实现，应继续遵守这几个底线：
-
-- 不把 `compose` 变成前置依赖
-- 不牺牲误报控制换取表面覆盖率
-- 不把本地化逻辑散落到各层
-- 不让输出层重新承担诊断逻辑
-
+- 默认链路里不再注册额外指标扩展检查
+- 覆盖摘要按“有无证据”展示，不按“是否尝试过采集”展示
+- `TOP-011` 只输出真正命中的 topic
+- 同一检查内证据必须可去重、可截断
+- 中文输出无乱码、无显著中英混排
+- 版本、二进制、README、用户手册必须对齐

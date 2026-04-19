@@ -75,6 +75,8 @@ type DockerConfig struct {
 	ComposeFile    string   `json:"compose_file" yaml:"compose_file"`
 	ContainerNames []string `json:"container_names" yaml:"container_names"`
 	InspectMounts  bool     `json:"inspect_mounts" yaml:"inspect_mounts"`
+
+	enabledSet bool `json:"-" yaml:"-"`
 }
 
 type LogConfig struct {
@@ -87,6 +89,8 @@ type LogConfig struct {
 	MaxFiles          int    `json:"max_files" yaml:"max_files"`
 	MaxBytesPerSource int    `json:"max_bytes_per_source" yaml:"max_bytes_per_source"`
 	CustomPatternsDir string `json:"custom_patterns_dir" yaml:"custom_patterns_dir"`
+
+	enabledSet bool `json:"-" yaml:"-"`
 }
 
 type ProbeConfig struct {
@@ -101,6 +105,8 @@ type ProbeConfig struct {
 	EnableIdempotence bool   `json:"enable_idempotence" yaml:"enable_idempotence"`
 	CleanupMode       string `json:"cleanup_mode" yaml:"cleanup_mode"`
 	TXProbeEnabled    bool   `json:"tx_probe_enabled" yaml:"tx_probe_enabled"`
+
+	enabledSet bool `json:"-" yaml:"-"`
 }
 
 type ExecutionConfig struct {
@@ -117,6 +123,8 @@ type JMXConfig struct {
 	Path          string   `json:"path" yaml:"path"`
 	Endpoints     []string `json:"endpoints" yaml:"endpoints"`
 	MetricSets    []string `json:"metric_sets" yaml:"metric_sets"`
+
+	enabledSet bool `json:"-" yaml:"-"`
 }
 
 type HostConfig struct {
@@ -126,6 +134,8 @@ type HostConfig struct {
 	FDWarnPct       int      `json:"fd_warn_pct" yaml:"fd_warn_pct"`
 	FDCritPct       int      `json:"fd_crit_pct" yaml:"fd_crit_pct"`
 	ClockSkewWarnMs int      `json:"clock_skew_warn_ms" yaml:"clock_skew_warn_ms"`
+
+	enabledSet bool `json:"-" yaml:"-"`
 }
 
 type ThresholdConfig struct {
@@ -161,6 +171,116 @@ type OutputConfig struct {
 	ShowPassChecks   bool `json:"show_pass_checks" yaml:"show_pass_checks"`
 	ShowSkipChecks   bool `json:"show_skip_checks" yaml:"show_skip_checks"`
 	Verbose          bool `json:"verbose" yaml:"verbose"`
+}
+
+func (c *DockerConfig) UnmarshalYAML(node *yaml.Node) error {
+	type plain DockerConfig
+	var decoded plain
+	if err := node.Decode(&decoded); err != nil {
+		return err
+	}
+	*c = DockerConfig(decoded)
+	c.enabledSet = yamlHasKey(node, "enabled")
+	return nil
+}
+
+func (c *DockerConfig) UnmarshalJSON(data []byte) error {
+	type plain DockerConfig
+	var decoded plain
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*c = DockerConfig(decoded)
+	c.enabledSet = jsonHasKey(data, "enabled")
+	return nil
+}
+
+func (c *LogConfig) UnmarshalYAML(node *yaml.Node) error {
+	type plain LogConfig
+	var decoded plain
+	if err := node.Decode(&decoded); err != nil {
+		return err
+	}
+	*c = LogConfig(decoded)
+	c.enabledSet = yamlHasKey(node, "enabled")
+	return nil
+}
+
+func (c *LogConfig) UnmarshalJSON(data []byte) error {
+	type plain LogConfig
+	var decoded plain
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*c = LogConfig(decoded)
+	c.enabledSet = jsonHasKey(data, "enabled")
+	return nil
+}
+
+func (c *ProbeConfig) UnmarshalYAML(node *yaml.Node) error {
+	type plain ProbeConfig
+	var decoded plain
+	if err := node.Decode(&decoded); err != nil {
+		return err
+	}
+	*c = ProbeConfig(decoded)
+	c.enabledSet = yamlHasKey(node, "enabled")
+	return nil
+}
+
+func (c *ProbeConfig) UnmarshalJSON(data []byte) error {
+	type plain ProbeConfig
+	var decoded plain
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*c = ProbeConfig(decoded)
+	c.enabledSet = jsonHasKey(data, "enabled")
+	return nil
+}
+
+func (c *JMXConfig) UnmarshalYAML(node *yaml.Node) error {
+	type plain JMXConfig
+	var decoded plain
+	if err := node.Decode(&decoded); err != nil {
+		return err
+	}
+	*c = JMXConfig(decoded)
+	c.enabledSet = yamlHasKey(node, "enabled")
+	return nil
+}
+
+func (c *JMXConfig) UnmarshalJSON(data []byte) error {
+	type plain JMXConfig
+	var decoded plain
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*c = JMXConfig(decoded)
+	c.enabledSet = jsonHasKey(data, "enabled")
+	return nil
+}
+
+func (c *HostConfig) UnmarshalYAML(node *yaml.Node) error {
+	type plain HostConfig
+	var decoded plain
+	if err := node.Decode(&decoded); err != nil {
+		return err
+	}
+	*c = HostConfig(decoded)
+	c.enabledSet = yamlHasKey(node, "enabled")
+	return nil
+}
+
+func (c *HostConfig) UnmarshalJSON(data []byte) error {
+	type plain HostConfig
+	var decoded plain
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*c = HostConfig(decoded)
+	c.enabledSet = jsonHasKey(data, "enabled")
+	return nil
 }
 
 func NormalizeInputPath(path string) string {
@@ -200,4 +320,31 @@ func LoadFile(path string, strict bool) (Config, error) {
 		}
 	}
 	return cfg, nil
+}
+
+func yamlHasKey(node *yaml.Node, key string) bool {
+	if node == nil {
+		return false
+	}
+	if node.Kind == yaml.DocumentNode && len(node.Content) > 0 {
+		node = node.Content[0]
+	}
+	if node.Kind != yaml.MappingNode {
+		return false
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if strings.EqualFold(strings.TrimSpace(node.Content[i].Value), key) {
+			return true
+		}
+	}
+	return false
+}
+
+func jsonHasKey(data []byte, key string) bool {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return false
+	}
+	_, ok := raw[key]
+	return ok
 }

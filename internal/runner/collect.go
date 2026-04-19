@@ -125,6 +125,7 @@ func runChecks(ctx context.Context, env *config.Runtime, bundle *snapshot.Bundle
 	transactionContextEnabled := env.Config.Probe.TXProbeEnabled ||
 		strings.TrimSpace(env.SelectedProfile.Producer.TransactionalID) != "" ||
 		strings.EqualFold(strings.TrimSpace(env.SelectedProfile.Consumer.IsolationLevel), "read_committed")
+	bundle.TransactionExpected = transactionContextEnabled
 
 	checkers := []checker{
 		networkchecks.BootstrapChecker{},

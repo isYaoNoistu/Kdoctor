@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 )
@@ -54,5 +55,6 @@ func runTasks(ctx context.Context, tasks ...taskSpec) []string {
 	for err := range errCh {
 		errs = append(errs, err)
 	}
+	sort.Strings(errs)
 	return errs
 }

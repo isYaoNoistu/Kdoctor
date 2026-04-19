@@ -27,11 +27,11 @@ func (ReturnedRouteChecker) Run(_ context.Context, snap *snapshot.Bundle) model.
 	evidence := make([]string, 0, len(snap.Network.MetadataChecks))
 	for _, check := range snap.Network.MetadataChecks {
 		if check.Reachable {
-			evidence = append(evidence, fmt.Sprintf("%s reachable", check.Address))
+			evidence = append(evidence, fmt.Sprintf("%s 可达", check.Address))
 			continue
 		}
 		unreachable++
-		evidence = append(evidence, fmt.Sprintf("%s unreachable: %s", check.Address, check.Error))
+		evidence = append(evidence, fmt.Sprintf("%s 不可达：%s", check.Address, check.Error))
 	}
 
 	result := rule.NewPass("KFK-005", "returned_broker_route", "kafka", "metadata 返回的 broker 路径可达")
@@ -42,7 +42,7 @@ func (ReturnedRouteChecker) Run(_ context.Context, snap *snapshot.Bundle) model.
 			result = rule.NewFail("KFK-005", "returned_broker_route", "kafka", "metadata 返回的所有 broker 路径都不可达，客户端很可能在 metadata 之后立刻失败")
 		}
 		result.Evidence = evidence
-		result.NextActions = []string{"核对 broker 返回地址与当前客户端网络是否匹配", "检查 advertised.listeners、端口暴露与 NAT", "结合 NET-005/NET-006 一起判断入口与返回路径是否分裂"}
+		result.NextActions = []string{"核对 broker 返回地址与当前客户端网络是否匹配", "检查 advertised.listeners、端口暴露与 NAT", "结合 NET-005 和 NET-006 一起判断入口与返回路径是否分裂"}
 	}
 	return result
 }

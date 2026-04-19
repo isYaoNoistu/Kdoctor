@@ -36,7 +36,7 @@ func (BootstrapLBChecker) Run(_ context.Context, snap *snapshot.Bundle) model.Ch
 	for _, check := range snap.Network.MetadataChecks {
 		if !check.Reachable {
 			unreachableMetadata++
-			evidence = append(evidence, fmt.Sprintf("metadata=%s unreachable", check.Address))
+			evidence = append(evidence, fmt.Sprintf("metadata 端点=%s 不可达", check.Address))
 		}
 	}
 	for _, host := range distinctMetadataHosts {
@@ -50,9 +50,9 @@ func (BootstrapLBChecker) Run(_ context.Context, snap *snapshot.Bundle) model.Ch
 		return rule.NewPass("NET-007", "bootstrap_only_load_balancer", "network", "bootstrap 与 metadata 主机路径一致，未见 LB 入口错配")
 	}
 
-	result := rule.NewWarn("NET-007", "bootstrap_only_load_balancer", "network", "疑似存在只代理 bootstrap 的 LB，metadata 后续流量已绕到 broker 直连地址")
+	result := rule.NewWarn("NET-007", "bootstrap_only_load_balancer", "network", "疑似存在只代理 bootstrap 的 LB，metadata 后续流量已经绕到 broker 直连地址")
 	result.Evidence = evidence
-	result.NextActions = []string{"确认负载均衡是否只覆盖 bootstrap 入口", "评估客户端是否应直连所有 broker 地址", "核对 advertised.listeners 是否应返回 LB 地址还是 broker 直连地址"}
+	result.NextActions = []string{"确认负载均衡是否只覆盖 bootstrap 入口", "评估客户端是否应直连所有 broker 地址", "核对 advertised.listeners 应返回 LB 地址还是 broker 直连地址"}
 	return result
 }
 

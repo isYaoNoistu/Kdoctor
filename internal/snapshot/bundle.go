@@ -11,4 +11,6 @@ type Bundle struct {
 	Group   *GroupSnapshot   `json:"group,omitempty"`
 	Probe   *ProbeSnapshot   `json:"probe,omitempty"`
 	Logs    *LogSnapshot     `json:"logs,omitempty"`
+
+	TransactionExpected bool `json:"-"`
 }

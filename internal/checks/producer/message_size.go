@@ -31,9 +31,9 @@ func (c MessageSizeChecker) Run(_ context.Context, bundle *snapshot.Bundle) mode
 			if match.ID != "LOG-MESSAGE-TOO-LARGE" {
 				continue
 			}
-			result := rule.NewFail("PRD-004", "message_size_budget", "producer", "Kafka logs already show message-too-large failures in the current window")
+			result := rule.NewFail("PRD-004", "message_size_budget", "producer", "当前时间窗内的 Kafka 日志已经出现 message-too-large 失败")
 			result.Evidence = append(evidence, fmt.Sprintf("log_match=%s count=%d", match.ID, match.Count))
-			result.NextActions = []string{"compare producer max.request.size with broker message.max.bytes", "reduce payload size or split records before retrying", "check whether compression or schema growth changed message size recently"}
+			result.NextActions = []string{"对比 producer max.request.size 与 broker message.max.bytes", "在重试前减小消息体或拆分记录", "检查压缩方式或 schema 增长是否导致消息变大"}
 			return result
 		}
 	}
@@ -57,17 +57,17 @@ func (c MessageSizeChecker) Run(_ context.Context, bundle *snapshot.Bundle) mode
 	}
 
 	if c.ProbeMessageBytes > 0 && minBrokerLimit > 0 && int64(c.ProbeMessageBytes) > minBrokerLimit {
-		result := rule.NewFail("PRD-004", "message_size_budget", "producer", "configured probe message size is larger than the broker message.max.bytes budget")
+		result := rule.NewFail("PRD-004", "message_size_budget", "producer", "当前探针消息大小已经超过 broker message.max.bytes 限制")
 		result.Evidence = evidence
-		result.NextActions = []string{"reduce probe.message_bytes or producer payload size", "raise broker message.max.bytes only after evaluating replication and memory impact", "keep producer and broker size limits aligned across environments"}
+		result.NextActions = []string{"降低 probe.message_bytes 或生产消息体大小", "只有在评估复制和内存影响后再提高 broker message.max.bytes", "保持 producer 与 broker 的大小限制在各环境中一致"}
 		return result
 	}
 
 	if len(evidence) == 0 {
-		return rule.NewSkip("PRD-004", "message_size_budget", "producer", "message size budget is not available from the current input set")
+		return rule.NewSkip("PRD-004", "message_size_budget", "producer", "当前输入下没有可用的消息大小预算信息")
 	}
 
-	result := rule.NewPass("PRD-004", "message_size_budget", "producer", "no message size budget conflict is visible in the current probe and broker settings")
+	result := rule.NewPass("PRD-004", "message_size_budget", "producer", "当前探针与 broker 配置未见消息大小预算冲突")
 	result.Evidence = evidence
 	return result
 }

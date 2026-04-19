@@ -2,342 +2,181 @@
 
 ## 1. 文档定位
 
-本文档回答四个问题：
+本文档说明 `Kdoctor` 在 **V2 封版状态** 下的产品边界、输入方式、输出目标与诊断原则。
 
-1. 这个工具为什么做。
-2. 这个工具要解决什么问题。
-3. V1 必须做到什么程度才算可用。
-4. 后续开发应当围绕什么边界继续推进。
+与 [architecture.md](./architecture.md) 的分工：
 
-与 [architecture.md](./architecture.md) 的关系如下：
-
-- `doc.md` 负责产品目标、能力范围、输入输出和诊断边界。
-- `architecture.md` 负责工程结构、模块职责、依赖规则和实施标准。
+- `doc.md` 回答“为什么做、做什么、边界在哪”
+- `architecture.md` 回答“代码怎么组织、模块怎么协作、工程标准是什么”
 
 ## 2. 工具目标
 
-`Kdoctor` 的定位不是 Kafka 管理平台，而是一个可在运维现场直接执行的 Go 二进制诊断工具。
+`Kdoctor` 的目标不是替代 Kafka 平台，而是成为一线现场可直接执行的 Go 二进制诊断工具。
 
 它需要做到：
 
-- 在只有一个 `bootstrap` 地址时，也能快速给出有价值的判断。
-- 在存在 `profile`、`compose`、Docker、日志目录时，能够分层增强，而不是改写主流程。
-- 把“症状”尽量收敛成“主因判断 + 下一步动作”。
-- 输出适合人读，也适合自动化集成。
+- 只有一个 `bootstrap` 地址时也能给出有价值判断
+- 在有 `profile / compose / docker / logs` 时逐层增强证据
+- 尽量把零散症状收敛成“主因判断 + 建议动作”
+- 同时支持人工阅读与自动化消费
 
-## 3. V1 要解决的问题
+## 3. 当前边界
 
-V1 重点覆盖以下五类问题：
+### 3.1 这版保留
 
-- 网络与 listener 问题
-- Kafka 元数据、broker 注册、KRaft controller / quorum 问题
-- Topic、leader、ISR、副本健康问题
-- 真实 client 链路问题：metadata、produce、consume、commit
-- 配置错误、部署错误、宿主机 / Docker / 日志侧问题
+- 网络与 listener 路径
+- Kafka metadata / broker / internal topics
+- KRaft controller / quorum
+- Topic / ISR / leader / 规划
+- Client probe
+- Compose lint
+- Docker / Host / Logs
+- Producer / Consumer / Transaction 上下文
 
-V1 不追求的平台能力：
+### 3.2 这版不做
 
-- 不做图形化平台
-- 不做自动修复
-- 不做 JMX 指标体系
-- 不直接接入 K8s 控制面解析
-- 不覆盖全部安全协议场景
+- 图形化平台
+- 自动修复
+- 默认扩展指标链路
+- K8s 控制面解析
+- 平台化资产管理
 
 ## 4. 核心设计原则
 
-### 4.1 通用输入优先
+### 4.1 最小输入可运行
 
-`bootstrap` 是最小必需输入，`profile` 和 `compose` 都只是增强输入。
+`bootstrap` 是最小输入。
 
-换句话说：
+没有 `compose`、没有 `profile`、没有 Docker、没有日志目录时，也必须能跑出最小可用结果。
 
-- 没有 `compose` 也必须能查。
-- 没有 `profile` 也必须能查。
-- 没有 Docker 和日志目录也必须能查。
+### 4.2 分层增强
 
-### 4.2 分层增强，而不是条件分叉
-
-工具输入层应该按能力增强，不应该按部署方式硬分叉。
-
-输入层级如下：
+输入层级按能力增强，而不是按部署方式硬分叉：
 
 1. `bootstrap-only`
 2. `bootstrap + profile`
 3. `bootstrap + compose`
-4. `bootstrap + compose + log-dir/docker`
+4. `bootstrap + compose + docker/logs/host`
 
 ### 4.3 证据优先
 
-每个检查项都要输出：
+每条结论尽量落到：
 
 - 状态
 - 摘要
 - 证据
-- 可能原因
-- 下一步动作
+- 风险解释
+- 下一步
 
-### 4.4 控制误报
+### 4.4 减少误导
 
-如果当前视角无法可靠判断，就优先：
+当当前视角不能可靠判断时，应优先输出：
 
 - `SKIP`
 - `WARN`
-- 降级说明
+- `无可用证据`
 
-而不是在证据不足时直接给出 `CRIT`。
+而不是在证据不足时直接抬成严重故障。
 
-### 4.5 输出要能让一线人员直接使用
+### 4.5 面向值班人员
 
-默认终端输出必须是中文，且足够“人话化”。
+默认终端报告必须满足：
 
-例如不应只写：
+- 中文
+- 短
+- 先看主因和动作
+- 默认不刷 `PASS / SKIP`
 
-```text
-under replicated
-```
-
-而应尽量表达为：
-
-```text
-某些分区 ISR 不足，acks=all 写入可能失败。
-```
-
-## 5. 支持的输入模式
+## 5. 输入模式
 
 ### 5.1 `bootstrap-only`
 
-最小可用输入，适合只有一个 Kafka 地址的现场。
-
-在该模式下，V1 至少要支持：
+最小可用模式，至少支持：
 
 - bootstrap TCP 检查
 - metadata 拉取
 - broker endpoint 可达性检查
-- topic / leader / ISR 检查
-- metadata / produce / consume / commit probe
+- Topic / leader / ISR 检查
+- `metadata / produce / consume / commit / e2e` 探针
 
 ### 5.2 `bootstrap + profile`
 
-适合你知道一些环境事实，但没有完整配置文件的场景。
+用于补充环境预期，例如：
 
-典型用途：
-
-- 期望 broker 数量
-- 期望 controller 端点
-- 期望 min ISR
-- 场景标签
+- broker 数
+- controller 端点
+- min ISR
+- replication factor
+- producer / consumer / transaction 上下文
 
 ### 5.3 `bootstrap + compose`
 
-适合对部署结构做静态校验。
+用于部署结构与配置对照，例如：
 
-V1 在该模式下增强：
+- `listeners`
+- `advertised.listeners`
+- `controller.quorum.voters`
+- `node.id`
+- `process.roles`
+- `inter.broker.listener.name`
 
-- `CFG-001~008`
-- controller quorum 配置对照
-- listener / advertised.listeners 对照
-- 宿主机端口和 Docker 挂载校验
+### 5.4 `bootstrap + docker/logs/host`
 
-### 5.4 `bootstrap + log-dir/docker`
+用于增强运行态证据，例如：
 
-适合现场排障时进一步收集：
+- 容器存在 / 运行 / OOMKilled / mount
+- 宿主机磁盘 / 端口 / FD / 内存
+- 日志指纹与上下文
 
-- 容器运行态
-- OOMKilled / restart
-- 数据目录挂载
-- 关键日志指纹
+## 6. 运行模式
 
-## 6. 检查能力分层
+- `quick`
+  快速巡检
+- `probe`
+  真实链路探针
+- `lint`
+  偏静态配置审计
+- `full`
+  尽量完整
+- `incident`
+  更强调主因摘要
 
-### 6.1 网络层
+## 7. 输出目标
 
-- `NET-001` bootstrap 可达性
-- `NET-002` 显式 listener 可达性
-- `NET-003` metadata 返回端点可达性
-- `NET-004` DNS / 主机名解析
+### 7.1 Terminal
 
-### 6.2 Kafka 元数据层
+- 默认只展开重点问题
+- 证据截断
+- 面向值班排障
 
-- `KFK-001` metadata 拉取
-- `KFK-002` broker 注册
-- `KFK-003` endpoint 合法性
-- `KFK-004` 内部主题健康
+### 7.2 JSON
 
-### 6.3 KRaft 层
+- 结构稳定
+- 包含 `schema_version`
+- 包含 `tool_version`
+- 面向自动化
 
-- `KRF-001` quorum 配置一致性
-- `KRF-002` active controller 合法性
-- `KRF-003` quorum 多数派与视角判断
+### 7.3 Markdown
 
-### 6.4 Topic / Replica 层
+- 章节固定
+- 面向留档 / 工单
 
-- `TOP-003` leader 健康
-- `TOP-004` ISR / replica 健康
-- `TOP-005` min ISR 风险
+## 8. 证据覆盖语义
 
-### 6.5 Client Probe 层
+封版后的覆盖摘要不再使用“尝试过采集”的乐观说法，而是按证据语义输出：
 
-- `CLI-001` metadata probe
-- `CLI-002` producer probe
-- `CLI-003` consumer probe
-- `CLI-004` commit probe
-- `CLI-005` end-to-end probe
+- `已获取证据`
+- `无可用证据`
+- `未纳入本次运行`
+- `探针=已执行`
 
-### 6.6 Config Lint 层
+## 9. 封版目标
 
-- `CFG-001~008`
+这版封版追求的不是“继续做大”，而是：
 
-包括：
+- 更稳
+- 更准
+- 更短
+- 更像给值班人员看的报告
 
-- node.id
-- cluster.id
-- process.roles
-- controller.quorum.voters
-- listeners / advertised.listeners
-- inter.broker.listener.name
-- replication / ISR 参数
-
-### 6.7 运维增强层
-
-- Host
-- Docker
-- Logs
-
-这些能力不能阻塞主流程，但应在可用时增强判断准确性。
-
-## 7. 运行模式
-
-### 7.1 `quick`
-
-目标：
-
-- 快速判断是否有明显故障
-- 优先跑轻量级检查
-
-### 7.2 `probe`
-
-目标：
-
-- 执行真实业务链路探针
-- 作为当前最重要的可用性模式
-
-### 7.3 `lint`
-
-目标：
-
-- 偏静态配置与部署校验
-
-### 7.4 `full`
-
-目标：
-
-- 在上下文足够时尽量跑完整检查
-
-### 7.5 `incident`
-
-目标：
-
-- 输出更聚焦的摘要
-- 更强调“主因”和“建议优先动作”
-
-## 8. 输出与退出码
-
-### 8.1 输出格式
-
-V1 支持三种输出：
-
-- 终端文本
-- JSON
-- Markdown
-
-### 8.2 输出要求
-
-- 默认终端输出必须是中文
-- JSON 保持稳定结构，便于自动化
-- Markdown 适合发群、贴工单和留档
-
-### 8.3 退出码
-
-- `0`：最高状态为 `PASS`
-- `1`：最高状态为 `WARN`
-- `2`：最高状态为 `FAIL`
-- `3`：最高状态为 `CRIT`
-- `5`：最高状态为 `ERROR`
-- `6`：最高状态为 `TIMEOUT`
-
-CLI 参数解析或初始化失败时，进程直接退出。
-
-## 9. 报告模型要求
-
-统一报告至少包含：
-
-- 工具版本
-- 模式
-- profile
-- 检查时间
-- 耗时
-- 汇总状态
-- broker 总数与存活数
-- 主因判断
-- 建议动作
-- 逐项检查结果
-
-逐项检查至少包含：
-
-- `id`
-- `module`
-- `status`
-- `summary`
-- `evidence`
-- `possible_causes`
-- `next_actions`
-
-## 10. Probe 设计要求
-
-Probe 是 V1 的核心能力之一，但要控制副作用。
-
-约束如下：
-
-- 仅使用探针主题和探针消费组
-- 默认写入最小消息
-- 不复用业务消费组
-- 失败时清楚标识失败阶段：metadata / produce / consume / commit
-
-## 11. 归因层要求
-
-V1 不能只停留在“列出问题”，至少要做到：
-
-- 把网络、metadata、KRaft、topic、probe、日志信号做基本关联
-- 尽量给出 1 到 3 个优先级最高的主因
-- 输出建议动作顺序
-
-当前阶段尤其要重点关联：
-
-- `NET-003` 与 `advertised.listeners`
-- `KFK-004` 与内部主题 / coordinator
-- `KRF-*` 与 controller / quorum
-- `TOP-*` 与 ISR / 写入风险
-- `CLI-*` 与真实客户端链路
-
-## 12. V1 验收标准
-
-V1 达到“基本可用可信”至少满足：
-
-- `go test ./...` 通过
-- 默认终端输出为中文
-- `bootstrap-only` 可直接运行
-- `compose` 为增强输入而不是前提
-- 真实 probe 可跑通 metadata / produce / consume / commit 主流程
-- 对视角不足的场景不做明显误报
-- JSON / Markdown 输出可正常生成
-
-## 13. 后续路线
-
-V1 之后优先考虑：
-
-1. 容量与趋势判断
-2. 更多场景夹具和 golden 输出
-3. 更强的调度隔离、timeout 和 degrade 模型
-4. 更多 profile 模板
-5. 根据真实使用反馈继续收敛误报和提示文案
-
+只要默认输出不再制造额外噪声，覆盖摘要与检查明细不再互相打架，证据不再重复误导，文档、二进制和输出行为保持一致，就达到这版封版目标。

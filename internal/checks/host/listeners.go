@@ -18,10 +18,10 @@ func (ListenerDriftChecker) Module() string { return "host" }
 
 func (ListenerDriftChecker) Run(_ context.Context, bundle *snapshot.Bundle) model.CheckResult {
 	if bundle == nil || bundle.Host == nil || !bundle.Host.Collected || len(bundle.Host.ObservedListenPorts) == 0 {
-		return rule.NewSkip("HOST-010", "listener_port_drift", "host", "actual listening port evidence is not available in the current input mode")
+		return rule.NewSkip("HOST-010", "listener_port_drift", "host", "当前输入模式下没有可用的实际监听端口证据")
 	}
 	if len(bundle.Host.PortChecks) == 0 {
-		return rule.NewSkip("HOST-010", "listener_port_drift", "host", "expected listener ports are not available for drift comparison")
+		return rule.NewSkip("HOST-010", "listener_port_drift", "host", "当前没有可用于对比的期望 listener 端口")
 	}
 
 	actual := map[int]struct{}{}
@@ -43,12 +43,12 @@ func (ListenerDriftChecker) Run(_ context.Context, bundle *snapshot.Bundle) mode
 		}
 	}
 
-	result := rule.NewPass("HOST-010", "listener_port_drift", "host", "expected listener ports are present in the current host listening table")
+	result := rule.NewPass("HOST-010", "listener_port_drift", "host", "期望的 listener 端口都出现在当前宿主机监听表中")
 	result.Evidence = evidence
 	if missing > 0 {
-		result = rule.NewFail("HOST-010", "listener_port_drift", "host", "some expected Kafka listener ports are missing from the host listening table")
+		result = rule.NewFail("HOST-010", "listener_port_drift", "host", "部分期望的 Kafka listener 端口没有出现在宿主机监听表中")
 		result.Evidence = evidence
-		result.NextActions = []string{"compare ss or netstat output with Kafka listener configuration", "check whether the broker process bound a different port or address than expected", "confirm Docker host-network and listener exposure match the current runtime state"}
+		result.NextActions = []string{"对比 ss 或 netstat 输出与 Kafka listener 配置", "检查 broker 进程是否绑定到了与预期不同的端口或地址", "确认 Docker host-network 和 listener 暴露与当前运行状态一致"}
 	}
 	return result
 }

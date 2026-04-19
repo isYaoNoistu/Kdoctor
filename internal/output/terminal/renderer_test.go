@@ -1,6 +1,8 @@
 package terminal
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -25,6 +27,7 @@ func TestRendererBootstrapOnlyScenario(t *testing.T) {
 		"重点问题：",
 		"[失败] NET-003 网络：metadata 返回了不可达的 broker 端点",
 	)
+	assertGolden(t, "bootstrap_only.txt", text)
 	if strings.Contains(text, "CFG-001 配置") || strings.Contains(text, "KFK-001 Kafka") {
 		t.Fatalf("expected pass/skip details to stay folded in default terminal output, got %q", text)
 	}
@@ -45,6 +48,7 @@ func TestRendererProbeOnlyScenario(t *testing.T) {
 		"其余 1 条已省略",
 		"下一步：",
 	)
+	assertGolden(t, "probe_only.txt", text)
 }
 
 func TestRendererVerboseScenarioShowsAppendix(t *testing.T) {
@@ -63,6 +67,7 @@ func TestRendererVerboseScenarioShowsAppendix(t *testing.T) {
 		"附录明细：",
 		"[通过] CFG-006 配置：listeners 与 advertised.listeners 结构一致",
 	)
+	assertGolden(t, "compose_logs_verbose.txt", text)
 }
 
 func sampleReport(mode string, profile string, checks []model.CheckResult) model.Report {
@@ -89,5 +94,17 @@ func assertContainsAll(t *testing.T, text string, fragments ...string) {
 		if !strings.Contains(text, fragment) {
 			t.Fatalf("expected output to contain %q, got %q", fragment, text)
 		}
+	}
+}
+
+func assertGolden(t *testing.T, name string, got string) {
+	t.Helper()
+	path := filepath.Join("testdata", "golden", name)
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read golden %s: %v", name, err)
+	}
+	if got != string(want) {
+		t.Fatalf("golden mismatch for %s\n--- got ---\n%s\n--- want ---\n%s", name, got, string(want))
 	}
 }

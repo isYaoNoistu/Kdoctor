@@ -206,7 +206,9 @@ func mergeConsumerAudit(base, override ConsumerAuditConfig) ConsumerAuditConfig 
 
 func mergeDocker(base, override DockerConfig) DockerConfig {
 	result := base
-	result.Enabled = result.Enabled || override.Enabled
+	if override.enabledSet {
+		result.Enabled = override.Enabled
+	}
 	if override.ComposeFile != "" {
 		result.ComposeFile = override.ComposeFile
 	}
@@ -219,7 +221,9 @@ func mergeDocker(base, override DockerConfig) DockerConfig {
 
 func mergeLogs(base, override LogConfig) LogConfig {
 	result := base
-	result.Enabled = result.Enabled || override.Enabled
+	if override.enabledSet {
+		result.Enabled = override.Enabled
+	}
 	if override.LogDir != "" {
 		result.LogDir = override.LogDir
 	}
@@ -249,7 +253,9 @@ func mergeLogs(base, override LogConfig) LogConfig {
 
 func mergeProbe(base, override ProbeConfig) ProbeConfig {
 	result := base
-	result.Enabled = result.Enabled || override.Enabled
+	if override.enabledSet {
+		result.Enabled = override.Enabled
+	}
 	if override.Topic != "" {
 		result.Topic = override.Topic
 	}
@@ -299,7 +305,9 @@ func mergeExecution(base, override ExecutionConfig) ExecutionConfig {
 
 func mergeJMX(base, override JMXConfig) JMXConfig {
 	result := base
-	result.Enabled = result.Enabled || override.Enabled
+	if override.enabledSet {
+		result.Enabled = override.Enabled
+	}
 	if override.ScrapeTimeout != "" {
 		result.ScrapeTimeout = override.ScrapeTimeout
 	}
@@ -317,7 +325,9 @@ func mergeJMX(base, override JMXConfig) JMXConfig {
 
 func mergeHost(base, override HostConfig) HostConfig {
 	result := base
-	result.Enabled = result.Enabled || override.Enabled
+	if override.enabledSet {
+		result.Enabled = override.Enabled
+	}
 	if len(override.DiskPaths) > 0 {
 		result.DiskPaths = append([]string(nil), override.DiskPaths...)
 	}

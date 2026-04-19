@@ -17,26 +17,26 @@ func (PortChecker) Module() string { return "host" }
 
 func (PortChecker) Run(_ context.Context, snap *snapshot.Bundle) model.CheckResult {
 	if snap == nil || snap.Host == nil || !snap.Host.Collected || len(snap.Host.PortChecks) == 0 {
-		return rule.NewSkip("HOST-006", "listener_port_occupation", "host", "host listener ports are not available in the current input mode")
+		return rule.NewSkip("HOST-006", "listener_port_occupation", "host", "当前输入模式下没有可用的宿主机 listener 端口证据")
 	}
 
 	unreachable := 0
 	evidence := []string{}
 	for _, check := range snap.Host.PortChecks {
 		if check.Reachable {
-			evidence = append(evidence, fmt.Sprintf("%s reachable in %dms", check.Address, check.DurationMs))
+			evidence = append(evidence, fmt.Sprintf("%s 可达，耗时 %dms", check.Address, check.DurationMs))
 			continue
 		}
 		unreachable++
-		evidence = append(evidence, fmt.Sprintf("%s unreachable: %s", check.Address, check.Error))
+		evidence = append(evidence, fmt.Sprintf("%s 不可达：%s", check.Address, check.Error))
 	}
 
-	result := rule.NewPass("HOST-006", "listener_port_occupation", "host", "expected Kafka listener ports are reachable from the host execution view")
+	result := rule.NewPass("HOST-006", "listener_port_occupation", "host", "从宿主机执行视角看，期望的 Kafka listener 端口可达")
 	result.Evidence = evidence
 	if unreachable > 0 {
-		result = rule.NewFail("HOST-006", "listener_port_occupation", "host", "some expected Kafka listener ports are not reachable from the host execution view")
+		result = rule.NewFail("HOST-006", "listener_port_occupation", "host", "从宿主机执行视角看，部分期望的 Kafka listener 端口不可达")
 		result.Evidence = evidence
-		result.NextActions = []string{"verify broker processes are listening on the expected ports", "check docker host network or service binding", "compare compose listener settings with the active process state"}
+		result.NextActions = []string{"确认 broker 进程正在预期端口监听", "检查 Docker host network 或服务绑定", "对比 compose listener 配置与实际进程状态"}
 	}
 	return result
 }

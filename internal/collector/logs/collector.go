@@ -51,12 +51,33 @@ type fingerprintSpec struct {
 	RecommendedChecks []string `json:"recommended_checks" yaml:"recommended_checks"`
 }
 
+var builtinFingerprints = []fingerprint{
+	newFingerprint("LOG-LEADER-NOT-AVAILABLE", `(?i)LEADER_NOT_AVAILABLE`, "fail", "partition leader is currently unavailable", []string{"controller transition is not complete", "leader broker is offline", "topic is still recovering"}, []string{"check TOP-003 leader health", "check KRF-002 active controller", "check broker registration and logs"}),
+	newFingerprint("LOG-NOT-LEADER", `(?i)NOT_LEADER_OR_FOLLOWER`, "fail", "client reached a broker that is not the current leader", []string{"metadata is stale", "leader moved during failure or rebalance", "advertised.listeners returned an unreachable or wrong broker"}, []string{"check NET-003 metadata endpoint reachability", "refresh client metadata", "check topic leader distribution"}),
+	newFingerprint("LOG-UNKNOWN-TOPIC", `(?i)UNKNOWN_TOPIC_OR_PARTITION`, "warn", "requested topic or partition does not exist on the cluster", []string{"topic name is wrong", "topic has not been created", "metadata is inconsistent during creation"}, []string{"check topic existence", "verify auto-create topic policy", "check controller logs"}),
+	newFingerprint("LOG-OFFSET-OOR", `(?i)OffsetOutOfRange`, "warn", "consumer requested an offset outside the retained range", []string{"consumer lag exceeded retention", "retention deleted old segments", "manual offset reset is required"}, []string{"check retention policy", "check consumer lag", "reset offsets if appropriate"}),
+	newFingerprint("LOG-MESSAGE-TOO-LARGE", `(?i)(MessageTooLarge|RecordTooLargeException)`, "fail", "message exceeds broker or client size limits", []string{"producer max request is larger than broker allowance", "message payload exceeds configured limits"}, []string{"check broker message.max.bytes", "check producer max.request.size", "retry with a smaller payload"}),
+	newFingerprint("LOG-CONNECTION-NODE", `(?i)Connection to node .* could not be established`, "fail", "client cannot establish TCP connectivity to a broker returned by metadata", []string{"advertised.listeners is wrong", "broker port is closed", "routing or firewall blocks the returned endpoint"}, []string{"check NET-003 metadata endpoint reachability", "check CFG-006 listeners settings", "verify broker ports are exposed"}),
+	newFingerprint("LOG-NODE-ASSIGNMENT", `(?i)Timed out waiting for a node assignment`, "fail", "producer could not find an assignable broker in time", []string{"metadata is stale or incomplete", "leaders are unavailable", "all returned brokers are unreachable"}, []string{"check KFK-002 broker registration", "check TOP-003 leader health", "check client metadata and network paths"}),
+	newFingerprint("LOG-COORDINATOR-NOT-AVAILABLE", `(?i)Group coordinator not available`, "warn", "consumer group coordinator is not currently ready", []string{"internal topics are unhealthy", "controller is transitioning", "brokers are still recovering"}, []string{"check KFK-004 internal topics", "check controller health", "retry after cluster stabilizes"}),
+	newFingerprint("LOG-COORDINATOR-LOADING", `(?i)Coordinator load in progress`, "warn", "group coordinator is still loading state", []string{"broker just started", "offset topic partition is recovering", "controller transition is in progress"}, []string{"check broker restart timeline", "check __consumer_offsets health", "retry once brokers settle"}),
+	newFingerprint("LOG-NOT-CONTROLLER", `(?i)NotControllerException`, "fail", "request hit a node that is no longer the active controller", []string{"controller has changed", "controller listener is unstable", "metadata cached an old controller"}, []string{"check KRF-002 active controller", "check KRF-003 quorum majority", "check controller listener reachability"}),
+	newFingerprint("LOG-AUTHORIZATION", `(?i)(TopicAuthorizationException|GroupAuthorizationException|ClusterAuthorizationException|AuthorizationException)`, "fail", "client hit an authorization denial", []string{"ACL is missing", "authorizer is enabled but permission is not granted", "principal or listener mapping is wrong"}, []string{"check SEC-004 authorization evidence", "verify StandardAuthorizer and ACL rules", "confirm the client principal and listener mapping"}),
+	newFingerprint("LOG-AUTHENTICATION", `(?i)(SaslAuthenticationException|Authentication failed)`, "fail", "client failed during authentication", []string{"SASL mechanism mismatch", "credentials are wrong", "listener security protocol is mismatched"}, []string{"check SEC-001 listener security mode", "check SEC-002 SASL mechanism", "verify credentials and JAAS settings"}),
+	newFingerprint("LOG-TRANSACTION", `(?i)(InvalidTxnStateException|ProducerFencedException|InvalidPidMappingException|UnknownProducerIdException|InvalidTxnTimeoutException)`, "fail", "transaction path reported an explicit error", []string{"transaction coordinator is unhealthy", "transaction timeout exceeds broker limit", "transaction producer state is inconsistent"}, []string{"check TXN-002 transaction topic requirement", "check TXN-003 transaction timeout limit", "review transaction coordinator logs"}),
+	newFingerprint("LOG-NO-SPACE", `(?i)No space left on device`, "crit", "disk is full and Kafka can no longer write safely", []string{"data or metadata disk is exhausted", "retention cleanup is insufficient", "host mount is mis-sized"}, []string{"check HOST-004 disk usage", "free disk space immediately", "review retention and log segment sizing"}),
+	newFingerprint("LOG-DISK-ERROR", `(?i)Disk error`, "crit", "Kafka reported a disk-level IO failure", []string{"underlying disk failure", "filesystem error", "mount path instability"}, []string{"check host and kernel logs", "verify disk health", "consider moving traffic away from the affected broker"}),
+	newFingerprint("LOG-CORRUPT-RECORD", `(?i)CorruptRecordException`, "fail", "Kafka detected a corrupt record or segment", []string{"segment corruption", "unclean shutdown during IO", "storage or filesystem error"}, []string{"check broker logs around the segment", "verify disk integrity", "run partition leader and ISR checks"}),
+	newFingerprint("LOG-REJECTED-EXECUTION", `(?i)RejectedExecutionException`, "warn", "Kafka thread pools are overloaded or shutting down", []string{"broker is overloaded", "broker is stopping", "system resources are insufficient"}, []string{"check host CPU and memory", "check broker restart events", "inspect request latency and backpressure"}),
+	newFingerprint("LOG-OOM", `(?i)OutOfMemoryError`, "crit", "JVM ran out of memory", []string{"heap is undersized", "traffic spike exhausted memory", "memory leak or severe backlog"}, []string{"check DKR-003 OOMKilled", "review heap and container memory limits", "restart carefully after confirming memory headroom"}),
+}
+
 func (Collector) Collect(ctx context.Context, env *config.Runtime, compose *snapshot.ComposeSnapshot, docker *snapshot.DockerSnapshot) *snapshot.LogSnapshot {
 	if env == nil || !env.Config.Logs.Enabled {
 		return nil
 	}
 
-	out := &snapshot.LogSnapshot{Collected: true}
+	out := &snapshot.LogSnapshot{}
 	sourceContents := map[string]sourceContent{}
 
 	if logDir := strings.TrimSpace(env.LogDir); logDir != "" {
@@ -98,11 +119,14 @@ func (Collector) Collect(ctx context.Context, env *config.Runtime, compose *snap
 	}
 
 	if len(sourceContents) == 0 {
+		out.Collected = len(out.Errors) > 0 || len(out.Warnings) > 0
+		out.Available = false
 		return out
 	}
 
+	out.Collected = true
 	out.Available = true
-	patterns := fingerprints()
+	patterns := append([]fingerprint(nil), builtinFingerprints...)
 	out.BuiltinPatternCount = len(patterns)
 
 	customPatterns, warnings := loadCustomFingerprints(env.LogCustomPatternsDir)
@@ -453,29 +477,6 @@ func compileFingerprint(spec fingerprintSpec, library string) (fingerprint, erro
 		ProbableCauses:    append([]string(nil), spec.ProbableCauses...),
 		RecommendedChecks: append([]string(nil), spec.RecommendedChecks...),
 	}, nil
-}
-
-func fingerprints() []fingerprint {
-	return []fingerprint{
-		newFingerprint("LOG-LEADER-NOT-AVAILABLE", `(?i)LEADER_NOT_AVAILABLE`, "fail", "partition leader is currently unavailable", []string{"controller transition is not complete", "leader broker is offline", "topic is still recovering"}, []string{"check TOP-003 leader health", "check KRF-002 active controller", "check broker registration and logs"}),
-		newFingerprint("LOG-NOT-LEADER", `(?i)NOT_LEADER_OR_FOLLOWER`, "fail", "client reached a broker that is not the current leader", []string{"metadata is stale", "leader moved during failure or rebalance", "advertised.listeners returned an unreachable or wrong broker"}, []string{"check NET-003 metadata endpoint reachability", "refresh client metadata", "check topic leader distribution"}),
-		newFingerprint("LOG-UNKNOWN-TOPIC", `(?i)UNKNOWN_TOPIC_OR_PARTITION`, "warn", "requested topic or partition does not exist on the cluster", []string{"topic name is wrong", "topic has not been created", "metadata is inconsistent during creation"}, []string{"check topic existence", "verify auto-create topic policy", "check controller logs"}),
-		newFingerprint("LOG-OFFSET-OOR", `(?i)OffsetOutOfRange`, "warn", "consumer requested an offset outside the retained range", []string{"consumer lag exceeded retention", "retention deleted old segments", "manual offset reset is required"}, []string{"check retention policy", "check consumer lag", "reset offsets if appropriate"}),
-		newFingerprint("LOG-MESSAGE-TOO-LARGE", `(?i)(MessageTooLarge|RecordTooLargeException)`, "fail", "message exceeds broker or client size limits", []string{"producer max request is larger than broker allowance", "message payload exceeds configured limits"}, []string{"check broker message.max.bytes", "check producer max.request.size", "retry with a smaller payload"}),
-		newFingerprint("LOG-CONNECTION-NODE", `(?i)Connection to node .* could not be established`, "fail", "client cannot establish TCP connectivity to a broker returned by metadata", []string{"advertised.listeners is wrong", "broker port is closed", "routing or firewall blocks the returned endpoint"}, []string{"check NET-003 metadata endpoint reachability", "check CFG-006 listeners settings", "verify broker ports are exposed"}),
-		newFingerprint("LOG-NODE-ASSIGNMENT", `(?i)Timed out waiting for a node assignment`, "fail", "producer could not find an assignable broker in time", []string{"metadata is stale or incomplete", "leaders are unavailable", "all returned brokers are unreachable"}, []string{"check KFK-002 broker registration", "check TOP-003 leader health", "check client metadata and network paths"}),
-		newFingerprint("LOG-COORDINATOR-NOT-AVAILABLE", `(?i)Group coordinator not available`, "warn", "consumer group coordinator is not currently ready", []string{"internal topics are unhealthy", "controller is transitioning", "brokers are still recovering"}, []string{"check KFK-004 internal topics", "check controller health", "retry after cluster stabilizes"}),
-		newFingerprint("LOG-COORDINATOR-LOADING", `(?i)Coordinator load in progress`, "warn", "group coordinator is still loading state", []string{"broker just started", "offset topic partition is recovering", "controller transition is in progress"}, []string{"check broker restart timeline", "check __consumer_offsets health", "retry once brokers settle"}),
-		newFingerprint("LOG-NOT-CONTROLLER", `(?i)NotControllerException`, "fail", "request hit a node that is no longer the active controller", []string{"controller has changed", "controller listener is unstable", "metadata cached an old controller"}, []string{"check KRF-002 active controller", "check KRF-003 quorum majority", "check controller listener reachability"}),
-		newFingerprint("LOG-AUTHORIZATION", `(?i)(TopicAuthorizationException|GroupAuthorizationException|ClusterAuthorizationException|AuthorizationException)`, "fail", "client hit an authorization denial", []string{"ACL is missing", "authorizer is enabled but permission is not granted", "principal or listener mapping is wrong"}, []string{"check SEC-004 authorization evidence", "verify StandardAuthorizer and ACL rules", "confirm the client principal and listener mapping"}),
-		newFingerprint("LOG-AUTHENTICATION", `(?i)(SaslAuthenticationException|Authentication failed)`, "fail", "client failed during authentication", []string{"SASL mechanism mismatch", "credentials are wrong", "listener security protocol is mismatched"}, []string{"check SEC-001 listener security mode", "check SEC-002 SASL mechanism", "verify credentials and JAAS settings"}),
-		newFingerprint("LOG-TRANSACTION", `(?i)(InvalidTxnStateException|ProducerFencedException|InvalidPidMappingException|UnknownProducerIdException|InvalidTxnTimeoutException)`, "fail", "transaction path reported an explicit error", []string{"transaction coordinator is unhealthy", "transaction timeout exceeds broker limit", "transaction producer state is inconsistent"}, []string{"check TXN-002 transaction topic requirement", "check TXN-003 transaction timeout limit", "review transaction coordinator logs"}),
-		newFingerprint("LOG-NO-SPACE", `(?i)No space left on device`, "crit", "disk is full and Kafka can no longer write safely", []string{"data or metadata disk is exhausted", "retention cleanup is insufficient", "host mount is mis-sized"}, []string{"check HOST-004 disk usage", "free disk space immediately", "review retention and log segment sizing"}),
-		newFingerprint("LOG-DISK-ERROR", `(?i)Disk error`, "crit", "Kafka reported a disk-level IO failure", []string{"underlying disk failure", "filesystem error", "mount path instability"}, []string{"check host and kernel logs", "verify disk health", "consider moving traffic away from the affected broker"}),
-		newFingerprint("LOG-CORRUPT-RECORD", `(?i)CorruptRecordException`, "fail", "Kafka detected a corrupt record or segment", []string{"segment corruption", "unclean shutdown during IO", "storage or filesystem error"}, []string{"check broker logs around the segment", "verify disk integrity", "run partition leader and ISR checks"}),
-		newFingerprint("LOG-REJECTED-EXECUTION", `(?i)RejectedExecutionException`, "warn", "Kafka thread pools are overloaded or shutting down", []string{"broker is overloaded", "broker is stopping", "system resources are insufficient"}, []string{"check host CPU and memory", "check broker restart events", "inspect request latency and backpressure"}),
-		newFingerprint("LOG-OOM", `(?i)OutOfMemoryError`, "crit", "JVM ran out of memory", []string{"heap is undersized", "traffic spike exhausted memory", "memory leak or severe backlog"}, []string{"check DKR-003 OOMKilled", "review heap and container memory limits", "restart carefully after confirming memory headroom"}),
-	}
 }
 
 func newFingerprint(id string, pattern string, severity string, meaning string, causes []string, checks []string) fingerprint {

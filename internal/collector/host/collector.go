@@ -23,14 +23,14 @@ func (Collector) Collect(ctx context.Context, env *config.Runtime, compose *snap
 	}
 
 	out := &snapshot.HostSnapshot{
-		Collected: true,
-		Raw:       map[string]string{},
+		Raw: map[string]string{},
 	}
 
 	diskTargets := collectDiskTargets(env, compose, docker)
 	configuredPorts := collectConfiguredPorts(env)
 	hostContext := len(diskTargets) > 0 || len(configuredPorts) > 0 || (docker != nil && docker.Available)
 	if len(diskTargets) == 0 && !hostContext {
+		out.Collected = false
 		out.Errors = append(out.Errors, "host-level evidence is not available from the current input mode")
 		return out
 	}
@@ -80,6 +80,7 @@ func (Collector) Collect(ctx context.Context, env *config.Runtime, compose *snap
 	}
 	out.Errors = append(out.Errors, signals.Errors...)
 
+	out.Collected = len(diskTargets) > 0 || hostContext || len(out.Errors) > 0
 	out.Available = len(out.DiskUsages) > 0 || len(out.PortChecks) > 0 || out.FD != nil || out.Memory != nil || len(out.ObservedListenPorts) > 0
 	return out
 }

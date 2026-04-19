@@ -55,12 +55,12 @@ func (InternalTopicsChecker) Run(_ context.Context, snap *snapshot.Bundle) model
 	}
 
 	evidence := []string{
-		fmt.Sprintf("__consumer_offsets partitions=%d", len(offsets.Partitions)),
+		fmt.Sprintf("__consumer_offsets 分区数=%d", len(offsets.Partitions)),
 	}
 	if hasTxn {
-		evidence = append(evidence, fmt.Sprintf("__transaction_state partitions=%d", len(txn.Partitions)))
+		evidence = append(evidence, fmt.Sprintf("__transaction_state 分区数=%d", len(txn.Partitions)))
 	} else {
-		evidence = append(evidence, "__transaction_state missing")
+		evidence = append(evidence, "__transaction_state 未出现")
 	}
 	evidence = append(evidence, offsetsIssues...)
 	evidence = append(evidence, txnIssues...)
@@ -72,9 +72,19 @@ func (InternalTopicsChecker) Run(_ context.Context, snap *snapshot.Bundle) model
 		return result
 	}
 	if !hasTxn {
-		result := rule.NewWarn("KFK-004", "internal_topics_health", "kafka", "__transaction_state topic is not present yet")
+		summary := "__transaction_state topic is not present yet"
+		if snap.TransactionExpected {
+			summary = "__transaction_state topic is not present yet; transaction-specific checks will continue the assessment"
+		} else {
+			summary = "__transaction_state topic is not present, but the current run has no transaction usage evidence"
+		}
+		result := rule.NewPass("KFK-004", "internal_topics_health", "kafka", summary)
 		result.Evidence = evidence
-		result.NextActions = []string{"this may be acceptable if transactions are unused", "verify transactional producers if they are expected"}
+		if snap.TransactionExpected {
+			result.NextActions = []string{"review transaction-specific checks such as TXN-001/TXN-002", "verify transactional producers if they are expected"}
+		} else {
+			result.NextActions = []string{"this may be acceptable if transactions are unused", "verify transactional producers if they are expected"}
+		}
 		return result
 	}
 
@@ -99,11 +109,11 @@ func topicHealthIssues(topic snapshot.TopicInfo) []string {
 	issues := []string{}
 	for _, partition := range topic.Partitions {
 		if partition.LeaderID == nil {
-			issues = append(issues, fmt.Sprintf("%s partition %d has no leader", topic.Name, partition.ID))
+			issues = append(issues, fmt.Sprintf("主题=%s 分区=%d 没有 leader", topic.Name, partition.ID))
 			continue
 		}
 		if len(partition.ISR) < len(partition.Replicas) {
-			issues = append(issues, fmt.Sprintf("%s partition %d ISR=%d replicas=%d", topic.Name, partition.ID, len(partition.ISR), len(partition.Replicas)))
+			issues = append(issues, fmt.Sprintf("主题=%s 分区=%d ISR=%d 副本数=%d", topic.Name, partition.ID, len(partition.ISR), len(partition.Replicas)))
 		}
 	}
 	return issues

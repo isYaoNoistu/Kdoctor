@@ -29,12 +29,12 @@ func (EndToEndChecker) Run(_ context.Context, snap *snapshot.Bundle) model.Check
 		fmt.Sprintf("topic=%s", snap.Probe.Topic),
 		fmt.Sprintf("group_id=%s", snap.Probe.GroupID),
 		fmt.Sprintf("executed_stage=%s", snap.Probe.ExecutedStage),
-		fmt.Sprintf("end_to_end_duration_ms=%d", snap.Probe.EndToEndDurationMs),
+		fmt.Sprintf("端到端耗时(ms)=%d", snap.Probe.EndToEndDurationMs),
 	}
 	if !allOK {
 		result = rule.NewFail("CLI-005", "end_to_end_probe", "client", "end-to-end probe failed")
 		result.Evidence = mergeEvidence([]string{fmt.Sprintf("topic=%s", snap.Probe.Topic)}, probeEvidence(snap.Probe))
-		result.NextActions = []string{"check the failing stage first", "verify probe topic and broker reachability", "correlate with network, ISR and controller checks"}
+		result.NextActions = []string{"先检查失败的探针阶段", "确认探针主题和 broker 可达性", "结合网络、ISR 与 controller 检查一起判断"}
 	}
 	return result
 }

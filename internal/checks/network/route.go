@@ -34,14 +34,14 @@ func (RouteMismatchChecker) Run(_ context.Context, snap *snapshot.Bundle) model.
 	}
 
 	unreachable := 0
-	evidence := []string{fmt.Sprintf("bootstrap_reachable=%d", bootstrapOK)}
+	evidence := []string{fmt.Sprintf("bootstrap 可达数量=%d", bootstrapOK)}
 	for _, check := range snap.Network.MetadataChecks {
 		if check.Reachable {
-			evidence = append(evidence, fmt.Sprintf("metadata=%s reachable", check.Address))
+			evidence = append(evidence, fmt.Sprintf("metadata 端点=%s 可达", check.Address))
 			continue
 		}
 		unreachable++
-		evidence = append(evidence, fmt.Sprintf("metadata=%s unreachable: %s", check.Address, check.Error))
+		evidence = append(evidence, fmt.Sprintf("metadata 端点=%s 不可达：%s", check.Address, check.Error))
 	}
 
 	result := rule.NewPass("NET-005", "metadata_route_mismatch", "network", "bootstrap 与 metadata 返回地址的网络路径一致")

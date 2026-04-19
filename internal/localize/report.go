@@ -15,6 +15,9 @@ var exactText = map[string]string{
 	"no probe brokers are available":                                                                          "当前没有可用的探针 broker",
 	"probe topic already exists":                                                                              "探针主题已存在",
 	"probe topic created for this run":                                                                        "探针主题已为本次检测自动创建",
+	"probe topic exists but leader is not ready yet":                                                          "探针主题已存在，但 leader 还未就绪",
+	"probe topic created but leader is not ready yet":                                                         "探针主题已创建，但 leader 还未就绪",
+	"probe topic became available but leader is not ready yet":                                                "探针主题已经出现，但 leader 还未就绪",
 	"probe topic became available during readiness check":                                                     "探针主题在就绪检查期间已可用",
 	"probe topic could not be prepared":                                                                       "探针主题未准备就绪",
 	"metadata stage failed; produce stage was not executed":                                                   "metadata 阶段失败，未执行生产阶段",
@@ -68,6 +71,8 @@ var exactText = map[string]string{
 	"__consumer_offsets topic is missing":                                                                     "__consumer_offsets 主题缺失",
 	"internal Kafka topics are unhealthy":                                                                     "Kafka 内部主题状态异常",
 	"__transaction_state topic is not present yet":                                                            "__transaction_state 主题暂未出现",
+	"__transaction_state topic is not present yet; transaction-specific checks will continue the assessment":  "__transaction_state 主题暂未出现；后续会由事务专项检查继续评估",
+	"__transaction_state topic is not present, but the current run has no transaction usage evidence":         "__transaction_state 主题暂未出现，但本次运行没有发现事务使用证据",
 	"internal Kafka topics are healthy":                                                                       "Kafka 内部主题状态健康",
 	"controller quorum configuration is not available in the current input mode":                              "当前输入模式下没有可用的 controller quorum 配置",
 	"controller quorum endpoints were provided explicitly":                                                    "已显式提供 controller quorum 端点",
@@ -420,6 +425,21 @@ var fragmentReplacer = strings.NewReplacer(
 	"cleanup_ok=", "清理成功=",
 	"cleanup_error=", "清理错误=",
 	"produce_count=", "已生产消息数=",
+	"expected_count=", "期望数量=",
+	"active_controller_count=", "活动 controller 数=",
+	"broker_count=", "broker 数=",
+	"compose_broker_count=", "compose 中 broker 数=",
+	"compose_controller_count=", "compose 中 controller 数=",
+	"profile_broker_count=", "profile 中 broker 数=",
+	"profile_controller_count=", "profile 中 controller 数=",
+	"custom_pattern_count=", "自定义指纹数=",
+	"source_count=", "来源数=",
+	"line_count=", "行数=",
+	"byte_count=", "字节数=",
+	"latest_timestamp=", "最新时间=",
+	"freshness=", "新鲜度=",
+	"sample_sufficient=", "样本充分=",
+	"empty=", "空内容=",
 	"commit_executed=", "提交阶段已执行=",
 	"commit_ok=", "提交阶段成功=",
 	"partition=", "分区=",
@@ -447,7 +467,6 @@ var fragmentReplacer = strings.NewReplacer(
 	"missing controller node.id=", "缺少 controller node.id=",
 	"roles=", "角色=",
 	"voters=", "投票节点=",
-	"count=", "次数=",
 	"sources=", "来源数=",
 	"severity=", "严重级别=",
 	"meaning=", "含义=",
@@ -548,7 +567,7 @@ func TranslateMode(mode string) string {
 
 func TranslateModule(module string) string {
 	if module == "quota" {
-		return "閰嶉"
+		return "配额"
 	}
 	switch module {
 	case "network":

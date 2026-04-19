@@ -1,6 +1,9 @@
 dist/*
 !dist/.gitkeep
 report.md
+probe.json
+.gocache/
+.gotmp/
 
 *.exe
 *.test

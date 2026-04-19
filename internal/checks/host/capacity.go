@@ -21,7 +21,7 @@ func (CapacityChecker) Module() string { return "host" }
 
 func (c CapacityChecker) Run(_ context.Context, bundle *snapshot.Bundle) model.CheckResult {
 	if bundle == nil || bundle.Host == nil || !bundle.Host.Collected || len(bundle.Host.DiskUsages) == 0 {
-		return rule.NewSkip("HOST-007", "host_disk_and_inode_capacity", "host", "host disk and inode evidence is not available in the current input mode")
+		return rule.NewSkip("HOST-007", "host_disk_and_inode_capacity", "host", "当前输入模式下没有可用的宿主机磁盘和 inode 证据")
 	}
 	if c.DiskWarnPct <= 0 {
 		c.DiskWarnPct = 75
@@ -49,17 +49,17 @@ func (c CapacityChecker) Run(_ context.Context, bundle *snapshot.Bundle) model.C
 		}
 	}
 
-	result := rule.NewPass("HOST-007", "host_disk_and_inode_capacity", "host", "host disk and inode headroom for Kafka paths looks acceptable")
+	result := rule.NewPass("HOST-007", "host_disk_and_inode_capacity", "host", "Kafka 相关宿主机路径的磁盘和 inode 余量正常")
 	result.Evidence = evidence
 	switch {
 	case fail > 0:
-		result = rule.NewFail("HOST-007", "host_disk_and_inode_capacity", "host", "some Kafka host paths are critically close to disk exhaustion")
+		result = rule.NewFail("HOST-007", "host_disk_and_inode_capacity", "host", "部分 Kafka 宿主机路径已经非常接近磁盘耗尽")
 		result.Evidence = evidence
-		result.NextActions = []string{"free disk space immediately on the affected host path", "review inode and retention growth before the next write peak", "check whether the host-level mount or filesystem is already impairing broker writes"}
+		result.NextActions = []string{"立即释放受影响宿主机路径的磁盘空间", "在下一次写入高峰前复核 inode 与保留策略增长情况", "检查宿主机挂载点或文件系统是否已经影响 broker 写入"}
 	case warn > 0:
-		result = rule.NewWarn("HOST-007", "host_disk_and_inode_capacity", "host", "host disk or inode headroom for Kafka paths is getting tight")
+		result = rule.NewWarn("HOST-007", "host_disk_and_inode_capacity", "host", "Kafka 宿主机路径的磁盘或 inode 余量开始变紧")
 		result.Evidence = evidence
-		result.NextActions = []string{"plan host-level cleanup or capacity expansion", "review inode usage on Kafka data and metadata directories", "track which broker path is growing fastest before it becomes a write outage"}
+		result.NextActions = []string{"规划宿主机层面的清理或容量扩展", "复核 Kafka 数据目录和 metadata 目录的 inode 使用情况", "找出增长最快的 broker 路径，避免演变成写入故障"}
 	}
 	return result
 }

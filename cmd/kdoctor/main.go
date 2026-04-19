@@ -9,9 +9,15 @@ import (
 	"time"
 
 	"kdoctor/internal/app"
+	"kdoctor/pkg/buildinfo"
 )
 
 func main() {
+	if shouldPrintVersion(os.Args[1:]) {
+		fmt.Println(buildinfo.FullVersion())
+		return
+	}
+
 	opts, err := parseFlags(os.Args[1:])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "错误：%v\n", err)
@@ -82,4 +88,12 @@ func parseFlags(args []string) (app.Options, error) {
 	}
 
 	return opts, nil
+}
+
+func shouldPrintVersion(args []string) bool {
+	if len(args) == 0 {
+		return false
+	}
+	first := strings.TrimSpace(strings.ToLower(args[0]))
+	return first == "--version" || first == "-version" || first == "version"
 }

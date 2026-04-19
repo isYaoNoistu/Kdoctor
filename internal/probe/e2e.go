@@ -147,6 +147,9 @@ func Run(ctx context.Context, env *config.Runtime) *snapshot.ProbeSnapshot {
 
 func ensureTopicReady(env *config.Runtime, brokers []string, meta *kafkatransport.Metadata) (bool, bool, string, error) {
 	if kafkatransport.TopicExists(meta, env.ProbeTopic) {
+		if err := waitForTopicLeaderReady(brokers, env.ProbeTimeout, env.ProbeTopic); err != nil {
+			return false, false, "probe topic exists but leader is not ready yet", err
+		}
 		return true, false, "probe topic already exists", nil
 	}
 
@@ -156,9 +159,50 @@ func ensureTopicReady(env *config.Runtime, brokers []string, meta *kafkatranspor
 		return false, created, "probe topic could not be prepared", fmt.Errorf("ensure probe topic: %w", err)
 	}
 	if created {
+		if err := waitForTopicLeaderReady(brokers, env.ProbeTimeout, env.ProbeTopic); err != nil {
+			return false, true, "probe topic created but leader is not ready yet", err
+		}
 		return true, true, "probe topic created for this run", nil
 	}
+	if err := waitForTopicLeaderReady(brokers, env.ProbeTimeout, env.ProbeTopic); err != nil {
+		return false, false, "probe topic became available but leader is not ready yet", err
+	}
 	return true, false, "probe topic became available during readiness check", nil
+}
+
+func waitForTopicLeaderReady(brokers []string, timeout time.Duration, topic string) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		meta, err := kafkatransport.FetchMetadata(brokers, timeout)
+		if err == nil && topicHasReadyLeader(meta, topic) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("probe topic %q exists in metadata but leader was not ready before timeout", topic)
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+}
+
+func topicHasReadyLeader(meta *kafkatransport.Metadata, topic string) bool {
+	if meta == nil {
+		return false
+	}
+	for _, item := range meta.Topics {
+		if item.Name != topic {
+			continue
+		}
+		if len(item.Partitions) == 0 {
+			return false
+		}
+		for _, partition := range item.Partitions {
+			if partition.LeaderID == nil {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }
 
 func cleanupProbeTopic(env *config.Runtime, brokers []string, probe *snapshot.ProbeSnapshot) {

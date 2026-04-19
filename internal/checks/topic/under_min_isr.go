@@ -37,21 +37,10 @@ func (c UnderMinISRChecker) Run(_ context.Context, bundle *snapshot.Bundle) mode
 			switch {
 			case len(partition.ISR) < c.MinISR:
 				underMin++
-				evidence = append(evidence, fmt.Sprintf("%s partition %d ISR=%d minISR=%d", topic.Name, partition.ID, len(partition.ISR), c.MinISR))
+				evidence = append(evidence, fmt.Sprintf("主题=%s 分区=%d ISR=%d minISR=%d", topic.Name, partition.ID, len(partition.ISR), c.MinISR))
 			case len(partition.ISR) == c.MinISR:
 				atMin++
-				evidence = append(evidence, fmt.Sprintf("%s partition %d at minISR=%d", topic.Name, partition.ID, c.MinISR))
-			}
-		}
-	}
-
-	if metrics := metricsSnap(bundle); metrics != nil && metrics.Available {
-		for _, endpoint := range metrics.Endpoints {
-			if value, ok := endpoint.Metrics["kafka_server_replicamanager_underminisrpartitioncount"]; ok {
-				evidence = append(evidence, fmt.Sprintf("jmx endpoint=%s under_min_isr=%.0f", endpoint.Address, value))
-			}
-			if value, ok := endpoint.Metrics["kafka_server_replicamanager_atminisrpartitioncount"]; ok {
-				evidence = append(evidence, fmt.Sprintf("jmx endpoint=%s at_min_isr=%.0f", endpoint.Address, value))
+				evidence = append(evidence, fmt.Sprintf("主题=%s 分区=%d 已到 minISR=%d", topic.Name, partition.ID, c.MinISR))
 			}
 		}
 	}
@@ -61,11 +50,11 @@ func (c UnderMinISRChecker) Run(_ context.Context, bundle *snapshot.Bundle) mode
 	if underMin > 0 {
 		result = rule.NewFail("TOP-007", "under_min_isr", "topic", "检测到 UnderMinISR，acks=all 写入已经存在失败风险")
 		result.Evidence = evidence
-		result.NextActions = []string{"优先恢复 ISR 与 follower 副本", "降低写入压力直到 ISR 恢复", "结合客户端生产探针与 MET-002 一起确认影响范围"}
+		result.NextActions = []string{"优先恢复 ISR 中的 follower 副本", "降低写入压力直到 ISR 恢复", "结合客户端生产探针与 ISR/副本状态一起确认影响范围"}
 		return result
 	}
 	if atMin >= c.AtMinISRWarn {
-		result = rule.NewWarn("TOP-007", "under_min_isr", "topic", "检测到 AtMinISR，当前写入链路已接近 min.insync.replicas 边界")
+		result = rule.NewWarn("TOP-007", "under_min_isr", "topic", "检测到 AtMinISR，当前写入链路已经接近 min.insync.replicas 边界")
 		result.Evidence = evidence
 		result.NextActions = []string{"持续观察 ISR 恢复情况", "在流量高峰前优先排查复制延迟", "确认 follower broker 没有磁盘或网络压力"}
 	}

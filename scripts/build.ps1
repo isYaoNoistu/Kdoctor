@@ -36,11 +36,14 @@ $output = Join-Path $targetDir $binaryName
 
 Push-Location $repoRoot
 try {
+    $commit = (git rev-parse --short HEAD).Trim()
+    $version = "v2.0.0"
+    $ldflags = "-s -w -X kdoctor/pkg/buildinfo.Version=$version -X kdoctor/pkg/buildinfo.Commit=$commit"
     $env:GOOS = $GOOS
     $env:GOARCH = $GOARCH
     $env:GOCACHE = $goCacheDir
     $env:GOTMPDIR = $goTmpDir
-    go build -o $output ./cmd/kdoctor
+    go build -trimpath -ldflags $ldflags -o $output ./cmd/kdoctor
     Write-Host "Built $output"
 }
 finally {

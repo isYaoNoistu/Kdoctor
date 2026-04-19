@@ -21,7 +21,7 @@ func (CapacityChecker) Module() string { return "storage" }
 
 func (c CapacityChecker) Run(_ context.Context, bundle *snapshot.Bundle) model.CheckResult {
 	if bundle == nil || bundle.Host == nil || !bundle.Host.Collected || len(bundle.Host.DiskUsages) == 0 {
-		return rule.NewSkip("STG-001", "disk_and_inode_capacity", "storage", "disk and inode evidence is not available in the current input mode")
+		return rule.NewSkip("STG-001", "disk_and_inode_capacity", "storage", "当前输入模式下没有可用的磁盘和 inode 证据")
 	}
 	if c.DiskWarnPct <= 0 {
 		c.DiskWarnPct = 75
@@ -49,17 +49,17 @@ func (c CapacityChecker) Run(_ context.Context, bundle *snapshot.Bundle) model.C
 		}
 	}
 
-	result := rule.NewPass("STG-001", "disk_and_inode_capacity", "storage", "Kafka disk and inode headroom look acceptable")
+	result := rule.NewPass("STG-001", "disk_and_inode_capacity", "storage", "Kafka 磁盘和 inode 余量正常")
 	result.Evidence = evidence
 	switch {
 	case fail > 0:
-		result = rule.NewFail("STG-001", "disk_and_inode_capacity", "storage", "at least one Kafka storage path is critically close to disk exhaustion")
+		result = rule.NewFail("STG-001", "disk_and_inode_capacity", "storage", "至少有一个 Kafka 存储路径已经非常接近磁盘耗尽")
 		result.Evidence = evidence
-		result.NextActions = []string{"free disk space immediately or expand the affected volume", "review retention and segment sizing before the next traffic peak", "check whether any broker path stopped writing because of capacity pressure"}
+		result.NextActions = []string{"立即释放磁盘空间或扩容受影响卷", "在下一次流量高峰前复核保留策略和 segment 大小", "检查是否已有 broker 路径因容量压力停止写入"}
 	case warn > 0:
-		result = rule.NewWarn("STG-001", "disk_and_inode_capacity", "storage", "Kafka storage headroom is getting tight on disk space or inodes")
+		result = rule.NewWarn("STG-001", "disk_and_inode_capacity", "storage", "Kafka 存储在磁盘空间或 inode 上的余量开始变紧")
 		result.Evidence = evidence
-		result.NextActions = []string{"plan cleanup or capacity expansion before write pressure increases", "review inode consumption on Kafka data and metadata paths", "correlate capacity growth with recent topic or partition changes"}
+		result.NextActions = []string{"在写入压力增加前规划清理或扩容", "复核 Kafka 数据路径和 metadata 路径的 inode 消耗", "将容量增长与近期 topic 或 partition 变化关联起来"}
 	}
 	return result
 }

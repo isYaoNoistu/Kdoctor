@@ -3,6 +3,8 @@ package model
 import (
 	"sort"
 	"time"
+
+	"kdoctor/pkg/buildinfo"
 )
 
 type Summary struct {
@@ -23,23 +25,25 @@ type Summary struct {
 }
 
 type Report struct {
-	ToolVersion string        `json:"tool_version"`
-	Mode        string        `json:"mode"`
-	Profile     string        `json:"profile"`
-	ExitCode    int           `json:"exit_code"`
-	CheckedAt   time.Time     `json:"checked_at"`
-	ElapsedMs   int64         `json:"elapsed_ms"`
-	Summary     Summary       `json:"summary"`
-	Checks      []CheckResult `json:"checks"`
-	Errors      []string      `json:"errors,omitempty"`
+	SchemaVersion string        `json:"schema_version"`
+	ToolVersion   string        `json:"tool_version"`
+	Mode          string        `json:"mode"`
+	Profile       string        `json:"profile"`
+	ExitCode      int           `json:"exit_code"`
+	CheckedAt     time.Time     `json:"checked_at"`
+	ElapsedMs     int64         `json:"elapsed_ms"`
+	Summary       Summary       `json:"summary"`
+	Checks        []CheckResult `json:"checks"`
+	Errors        []string      `json:"errors,omitempty"`
 }
 
 func NewReport(mode, profile string, checkedAt time.Time) Report {
 	return Report{
-		ToolVersion: "2.0.0",
-		Mode:        mode,
-		Profile:     profile,
-		CheckedAt:   checkedAt,
+		SchemaVersion: "kdoctor.report.v2",
+		ToolVersion:   buildinfo.ToolVersion(),
+		Mode:          mode,
+		Profile:       profile,
+		CheckedAt:     checkedAt,
 		Summary: Summary{
 			Status: StatusPass,
 		},
