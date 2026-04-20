@@ -121,6 +121,145 @@ Linux:
 - `inter.broker.listener.name`
 - Docker 挂载、持久化和数据目录规划
 
+### 4.4 如果 Kafka 开启了 TLS / SSL / SASL
+
+当前版本对加密 Kafka 的支持分成两层：
+
+1. 支持“安全配置审计”
+2. 暂不支持“带凭证直接连加密 listener 做 metadata / probe”
+
+先说结论：
+
+- 如果你有 `docker-compose.yml`，当前版本可以检查安全配置本身是否合理
+- 如果你的 Kafka 只开放 `SSL / SASL_SSL / SASL_PLAINTEXT` listener，当前版本还不能直接拿用户名、密码、证书去跑真实客户端探针
+- 如果你的集群另外保留了一个可达的 `PLAINTEXT` 运维 listener，那么可以把 `Kdoctor` 指到那个运维 listener 上，同时继续用 `compose` 审计安全配置
+
+当前已经支持的安全相关检查有：
+
+- `SEC-001`：`listener.security.protocol.map` 与 `profile.security_mode` 是否一致
+- `SEC-002`：SASL 机制是否覆盖 `profile.sasl_mechanism`
+- `SEC-003`：SSL / SASL_SSL listener 的证书握手、SAN、到期时间检查
+- `SEC-004`：日志或探针里是否出现认证 / 授权拒绝证据
+- `SEC-005`：`Authorizer` 是否配置、一致
+
+当前还不支持的能力有：
+
+- 在 `kdoctor.yaml` 里配置 Kafka TLS 客户端证书、私钥、CA
+- 在 `kdoctor.yaml` 里配置 SASL 用户名、密码、JAAS
+- 直接连接 `SSL / SASL_SSL / SASL_PLAINTEXT` listener 做 `metadata / produce / consume / commit / e2e`
+
+也就是说，当前版本的“安全能力”主要是：
+
+- 检查配置是否写对了
+- 检查证书是否能握手、是否快过期
+- 检查日志里是否已经出现认证 / 授权问题
+
+而不是：
+
+- 作为一个完整的 TLS / SASL Kafka 客户端去登录集群
+
+### 4.5 安全模式怎么写
+
+`kdoctor.yaml` 里的 `profile.security_mode` 当前支持这些值：
+
+- `plaintext`
+- `ssl`
+- `tls`
+- `sasl`
+- `sasl_plaintext`
+- `sasl_ssl`
+
+如果用了 SASL，还可以补：
+
+- `profile.sasl_mechanism`
+
+例如：
+
+```yaml
+profiles:
+  secure-kafka:
+    execution_view: "external"
+    security_mode: "sasl_ssl"
+    sasl_mechanism: "SCRAM-SHA-512"
+    broker_count: 3
+    expected_replication_factor: 3
+    expected_min_isr: 2
+```
+
+这段配置的作用是：
+
+- 告诉 `Kdoctor` 你期望当前执行视角走的是 `SASL_SSL`
+- 告诉 `Kdoctor` 期望 broker 启用了 `SCRAM-SHA-512`
+
+它会影响：
+
+- `SEC-001`
+- `SEC-002`
+- `SEC-003`
+
+但它不会让当前版本自动拿这些参数去登录 Kafka。
+
+### 4.6 加密场景下现在怎么用
+
+#### 场景 A：只有加密 listener，没有任何明文运维 listener
+
+这种场景下，当前版本不适合直接做完整链路探针。
+
+你可以把它当成“安全配置与证书审计工具”来辅助使用，但不能把 `probe` 结果当成完整可用性判断。
+
+重点看：
+
+- `SEC-001`
+- `SEC-002`
+- `SEC-003`
+- `SEC-004`
+- `SEC-005`
+
+如果这类环境还需要 `Kdoctor` 去真正连 Kafka，那就属于后续要补的客户端安全连接能力，不是当前封版能力。
+
+#### 场景 B：对外是加密 listener，但内网保留一个 PLAINTEXT 运维 listener
+
+这种场景是当前版本最容易落地的方式。
+
+做法是：
+
+1. `bootstrap` 指向那个可达的明文运维 listener
+2. `compose` 继续提供真实的安全配置
+3. `profile.security_mode` 按你真正业务 listener 的模式填写
+
+例如：
+
+```yaml
+profiles:
+  prod:
+    bootstrap_internal:
+      - "192.168.1.1:9092"
+    execution_view: "external"
+    security_mode: "sasl_ssl"
+    sasl_mechanism: "SCRAM-SHA-512"
+```
+
+然后运行：
+
+Linux:
+
+```bash
+./kdoctor probe --bootstrap 192.168.1.1:9092 --config ./kdoctor.yaml --compose ./docker-compose.yml
+```
+
+Windows:
+
+```powershell
+.\kdoctor.exe probe --bootstrap 192.168.1.1:9092 --config .\kdoctor.yaml --compose .\docker-compose.yml
+```
+
+这种方式下：
+
+- `CLI-*` 和 `KFK-*` 走明文运维 listener
+- `SEC-*` 继续审计你真正暴露给业务的 `SSL / SASL` listener
+
+这是当前版本在“加密 Kafka”场景下最现实的使用方式。
+
 ## 5. Windows / Linux 路径差异
 
 ### 5.1 配置文件路径
@@ -353,6 +492,30 @@ Linux 要写：
 - 或部分内部 topic / ISR 已经处在高风险边界
 
 这种情况说明环境“还能用”，但不代表“健康”。
+
+### 11.4 为什么我明明是加密 Kafka，`probe` 却失败了
+
+如果你的集群只开放了：
+
+- `SSL`
+- `SASL_SSL`
+- `SASL_PLAINTEXT`
+
+那当前版本大概率不能直接完成 `probe`。
+
+原因不是 Kafka 坏了，而是当前版本还没有把：
+
+- TLS 客户端证书
+- CA
+- SASL 用户名 / 密码
+- JAAS / SCRAM 登录参数
+
+接进 Kafka 客户端传输层。
+
+所以当前版本面对纯加密 listener 的能力边界是：
+
+- 能审计配置和证书
+- 不能直接当成完整安全客户端去登录 Kafka
 
 ## 12. 退出码
 
