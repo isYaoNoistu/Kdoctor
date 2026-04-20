@@ -144,6 +144,7 @@ Windows PowerShell:
 ## 9. 仓库文档
 
 - [USER_GUIDE.md](./USER_GUIDE.md)：完整用户手册
+- [CHECK_BASELINE.md](./CHECK_BASELINE.md)：检查基线文档，汇总所有检查项、阈值和判定依据
 - [doc.md](./doc.md)：设计文档
 - [architecture.md](./architecture.md)：架构与工程标准
-- [version](./version)：阶段记录与封版文档
+- [version](./version)：仅保留 `version1.md` 与 `version2.md` 两份版本总览
