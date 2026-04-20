@@ -7,6 +7,7 @@ type HostSnapshot struct {
 	PortChecks          []EndpointCheck   `json:"port_checks,omitempty"`
 	ObservedListenPorts []int             `json:"observed_listen_ports,omitempty"`
 	FD                  *FDStats          `json:"fd,omitempty"`
+	ContainerFD         []ContainerFDStat `json:"container_fd,omitempty"`
 	Memory              *MemoryStats      `json:"memory,omitempty"`
 	Errors              []string          `json:"errors,omitempty"`
 	Raw                 map[string]string `json:"raw,omitempty"`
@@ -28,6 +29,13 @@ type FDStats struct {
 	SoftLimit  uint64 `json:"soft_limit,omitempty"`
 	SystemUsed uint64 `json:"system_used,omitempty"`
 	SystemMax  uint64 `json:"system_max,omitempty"`
+}
+
+type ContainerFDStat struct {
+	Name      string `json:"name"`
+	SoftLimit uint64 `json:"soft_limit,omitempty"`
+	HardLimit uint64 `json:"hard_limit,omitempty"`
+	Error     string `json:"error,omitempty"`
 }
 
 type MemoryStats struct {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 
 	shelltransport "kdoctor/internal/transport/shell"
@@ -69,4 +71,53 @@ func Logs(ctx context.Context, name string, tail int, since string) (string, err
 	}
 	args = append(args, "--tail", fmt.Sprintf("%d", tail), name)
 	return shelltransport.Run(ctx, "docker", args...)
+}
+
+func ProcessOpenFileLimit(ctx context.Context, name string) (uint64, uint64, error) {
+	output, err := shelltransport.Run(ctx, "docker", "exec", name, "sh", "-c", "cat /proc/1/limits")
+	if err != nil {
+		return 0, 0, fmt.Errorf("docker exec %s cat /proc/1/limits: %w", name, err)
+	}
+	soft, hard, parseErr := parseOpenFileLimit(output)
+	if parseErr != nil {
+		return 0, 0, fmt.Errorf("parse open file limit for %s: %w", name, parseErr)
+	}
+	return soft, hard, nil
+}
+
+func parseOpenFileLimit(input string) (uint64, uint64, error) {
+	for _, line := range strings.Split(input, "\n") {
+		fields := strings.Fields(strings.TrimSpace(line))
+		if len(fields) < 5 {
+			continue
+		}
+		if strings.ToLower(strings.Join(fields[:3], " ")) != "max open files" {
+			continue
+		}
+		soft, err := parseLimitValue(fields[3])
+		if err != nil {
+			return 0, 0, err
+		}
+		hard, err := parseLimitValue(fields[4])
+		if err != nil {
+			return 0, 0, err
+		}
+		return soft, hard, nil
+	}
+	return 0, 0, fmt.Errorf("Max open files line not found")
+}
+
+func parseLimitValue(input string) (uint64, error) {
+	value := strings.TrimSpace(strings.ToLower(input))
+	if value == "" {
+		return 0, fmt.Errorf("empty limit value")
+	}
+	if value == "unlimited" {
+		return math.MaxUint64, nil
+	}
+	parsed, err := strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	return parsed, nil
 }

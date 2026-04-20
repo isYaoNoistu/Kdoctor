@@ -12,6 +12,7 @@ import (
 	"kdoctor/internal/config"
 	"kdoctor/internal/snapshot"
 	disktransport "kdoctor/internal/transport/disk"
+	dockertransport "kdoctor/internal/transport/docker"
 	"kdoctor/internal/transport/tcp"
 )
 
@@ -72,6 +73,9 @@ func (Collector) Collect(ctx context.Context, env *config.Runtime, compose *snap
 	if signals.FD != nil {
 		out.FD = signals.FD
 	}
+	if containerFD := collectContainerFD(ctx, docker); len(containerFD) > 0 {
+		out.ContainerFD = containerFD
+	}
 	if signals.Memory != nil {
 		out.Memory = signals.Memory
 	}
@@ -81,8 +85,31 @@ func (Collector) Collect(ctx context.Context, env *config.Runtime, compose *snap
 	out.Errors = append(out.Errors, signals.Errors...)
 
 	out.Collected = len(diskTargets) > 0 || hostContext || len(out.Errors) > 0
-	out.Available = len(out.DiskUsages) > 0 || len(out.PortChecks) > 0 || out.FD != nil || out.Memory != nil || len(out.ObservedListenPorts) > 0
+	out.Available = len(out.DiskUsages) > 0 || len(out.PortChecks) > 0 || out.FD != nil || len(out.ContainerFD) > 0 || out.Memory != nil || len(out.ObservedListenPorts) > 0
 	return out
+}
+
+func collectContainerFD(ctx context.Context, docker *snapshot.DockerSnapshot) []snapshot.ContainerFDStat {
+	if docker == nil || !docker.Available {
+		return nil
+	}
+	stats := make([]snapshot.ContainerFDStat, 0, len(docker.Containers))
+	for _, container := range docker.Containers {
+		if !container.Running || strings.TrimSpace(container.Name) == "" {
+			continue
+		}
+		item := snapshot.ContainerFDStat{Name: container.Name}
+		soft, hard, err := dockertransport.ProcessOpenFileLimit(ctx, container.Name)
+		if err != nil {
+			item.Error = err.Error()
+			stats = append(stats, item)
+			continue
+		}
+		item.SoftLimit = soft
+		item.HardLimit = hard
+		stats = append(stats, item)
+	}
+	return stats
 }
 
 func collectDiskTargets(env *config.Runtime, compose *snapshot.ComposeSnapshot, docker *snapshot.DockerSnapshot) []string {
